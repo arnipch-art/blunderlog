@@ -3,9 +3,9 @@ import { Engine } from './engine.js';
 import { loadBook, parsePgn, analyseGame, reviewMoves, openingName, accuracyParts, ACC_BLEND } from './review.js';
 import { loadReviews, saveReview, clearUser } from './storage.js';
 import { renderDashboard, renderGame, calibrate } from './dashboard.js';
+import { t, getLang, setLang } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
-const UA_NOTE = 'schackstat (github pages, personal analysis)';
 const PROFILES = { fast: { depth: 10, movetime: 400 }, normal: { depth: 14, movetime: 1000 }, deep: { depth: 18, movetime: 3000 } };
 const DRAW_RESULTS = new Set(['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient']);
 
@@ -13,8 +13,8 @@ const state = { user: null, recs: [], engine: null, running: false, stop: false,
 
 async function api(url) {
   const r = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (r.status === 404) throw new Error('Hittar ingen chess.com-användare med det namnet.');
-  if (!r.ok) throw new Error(`chess.com svarade ${r.status}`);
+  if (r.status === 404) throw new Error(t('notFound'));
+  if (!r.ok) throw new Error(t('apiError', { status: r.status }));
   return r.json();
 }
 
@@ -65,7 +65,7 @@ function render() {
 async function analyseOne(cand, book, limit) {
   const { header, history, clocks } = parsePgn(cand.pgn);
   const res = await analyseGame(history, state.engine, limit,
-    (i, n) => setProgress(`${cand.meta.opponent} · drag ${i}/${n}`, i / n), () => state.stop);
+    (i, n) => setProgress(t('moveOf', { opp: cand.meta.opponent, i, n }), i / n), () => state.stop);
   if (!res) return null;
   const { infos, fens } = res;
   const reviews = reviewMoves(history, fens, infos, book);
@@ -83,31 +83,32 @@ async function run() {
   const classes = new Set([...document.querySelectorAll('input[name=cls]:checked')].map((e) => e.value));
   const limit = Number($('#count').value);
   const profile = PROFILES[$('#profile').value];
-  history.replaceState(null, '', `?user=${encodeURIComponent(user)}`);
+  history.replaceState(null, '', `?user=${encodeURIComponent(user)}${getLang() === 'en' ? '&lang=en' : ''}`);
+  saveSettings();
 
   state.user = user; state.running = true; state.stop = false;
   $('#run').hidden = true; $('#stop').hidden = false; $('#error').hidden = true;
   try {
-    setProgress('Laddar sparad analys …', 0);
+    setProgress(t('loadingSaved'), 0);
     state.recs = await loadReviews(user);
     render();
-    setProgress('Hämtar partier från chess.com …', 0);
+    setProgress(t('fetching'), 0);
     const have = new Set(state.recs.map((r) => r.id));
     const cands = await fetchCandidates(user, classes, limit, have);
-    if (!cands.length) { setProgress('Inga nya partier att analysera.', 1); return; }
-    setProgress('Startar Stockfish …', 0);
+    if (!cands.length) { setProgress(t('noNew'), 1); return; }
+    setProgress(t('starting'), 0);
     const book = await loadBook();
     if (!state.engine) { state.engine = new Engine(); await state.engine.init(); }
     for (let k = 0; k < cands.length; k++) {
       if (state.stop) break;
-      $('#progress-game').textContent = `Parti ${k + 1} av ${cands.length}`;
+      $('#progress-game').textContent = t('gameOf', { k: k + 1, n: cands.length });
       const rec = await analyseOne(cands[k], book, profile);
       if (!rec) break;
       state.recs.push(rec);
       await saveReview(user, rec);
       render();
     }
-    setProgress(state.stop ? 'Stoppad – det som hann analyseras är sparat.' : 'Klart. Kör igen senare för att lägga till nya partier.', 1);
+    setProgress(state.stop ? t('stopped') : t('done'), 1);
     $('#progress-game').textContent = '';
   } catch (e) {
     $('#error').textContent = e.message; $('#error').hidden = false;
@@ -122,6 +123,7 @@ function showGame(id) {
   if (!rec) return;
   const panel = $('#game');
   panel.innerHTML = renderGame(rec, state.blend);
+  panel.dataset.id = id;
   panel.hidden = false;
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -135,14 +137,66 @@ $('#run').addEventListener('click', run);
 $('#stop').addEventListener('click', () => { state.stop = true; state.engine?.stop(); });
 $('#form').addEventListener('submit', (e) => { e.preventDefault(); if (!state.running) run(); });
 $('#clear').addEventListener('click', async () => {
-  if (!state.user || !confirm(`Ta bort sparad analys för ${state.user} i den här webbläsaren?`)) return;
+  if (!state.user || !confirm(t('confirmClear', { user: state.user }))) return;
   await clearUser(state.user); state.recs = []; render();
 });
 
-// ?user=namn förifyller och visar sparad analys direkt
+// ---- inställningar, språk, autostart
+
+function saveSettings() {
+  try {
+    localStorage.setItem('settings', JSON.stringify({
+      count: $('#count').value, profile: $('#profile').value, auto: $('#auto').checked,
+      cls: [...document.querySelectorAll('input[name=cls]')].filter((e) => e.checked).map((e) => e.value),
+    }));
+  } catch { /* ignore */ }
+}
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('settings') || 'null');
+    if (!s) return;
+    $('#count').value = s.count; $('#profile').value = s.profile; $('#auto').checked = s.auto !== false;
+    for (const e of document.querySelectorAll('input[name=cls]')) e.checked = s.cls.includes(e.value);
+  } catch { /* ignore */ }
+}
+
+// Statisk text i index.html: element med data-i18n får sin text ur språkfilen
+function applyLang() {
+  document.documentElement.lang = getLang();
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll('[data-i18n-n]')) el.textContent = t('last', { n: el.dataset.i18nN });
+  $('#footer').innerHTML = t('footer', {
+    sf: '<a href="https://github.com/nmrugg/stockfish.js" rel="noopener">Stockfish.js 19 lite</a>',
+    cj: '<a href="https://github.com/jhlywa/chess.js" rel="noopener">chess.js</a>',
+    lo: '<a href="https://github.com/lichess-org/chess-openings" rel="noopener">lichess chess-openings</a>',
+    cc: '<a href="https://www.chess.com/news/view/published-data-api" rel="noopener">chess.com public API</a>',
+    gh: '<a href="https://github.com/arnipch-art/blunderlog" rel="noopener">github.com/arnipch-art/blunderlog</a>',
+  });
+  for (const b of document.querySelectorAll('.lang button')) b.classList.toggle('on', b.dataset.lang === getLang());
+  render();
+  if (!$('#game').hidden) { const id = $('#game').dataset.id; if (id) showGame(id); }
+}
+document.querySelector('.lang').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-lang]');
+  if (!b) return;
+  setLang(b.dataset.lang);
+  const u = new URLSearchParams(location.search);
+  if (getLang() === 'en') u.set('lang', 'en'); else u.delete('lang');
+  history.replaceState(null, '', u.toString() ? `?${u}` : location.pathname);
+  applyLang();
+});
+$('#auto').addEventListener('change', saveSettings);
+
+loadSettings();
+applyLang();
+
+// ?user=namn: visa sparad analys direkt och – om auto är på – kolla efter nya partier
 const initial = new URLSearchParams(location.search).get('user');
 if (initial) {
   $('#user').value = initial;
   state.user = initial;
-  loadReviews(initial).then((recs) => { state.recs = recs; render(); });
+  loadReviews(initial).then((recs) => {
+    state.recs = recs; render();
+    if (recs.length && $('#auto').checked) run();
+  });
 }
