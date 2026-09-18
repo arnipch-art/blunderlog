@@ -12,7 +12,7 @@ const PATTERN_TEXT = {
     missed_punish: { title: 'Straffade inte motståndarens blunder', what: 'Motståndaren gjorde precis ett stort misstag, men ditt svar tog inte vara på det.', fix: 'När motståndaren gör ett drag som ser konstigt ut: stanna upp. Fråga "vad slutade den pjäsen skydda?" och "vilken ruta lämnade den?"', drill: 'Efter varje parti: klicka igenom motståndarens blunders och se vad motorn ville.' },
     threw_won: { title: 'Tappade en vunnen ställning', what: 'Du hade ≥80 % vinstchans och ett enda drag tog dig ner till jämnt eller sämre.', fix: 'När du leder: förenkla. Byt av pjäser, undvik komplikationer, håll kungen säker. Ett tråkigt drag som behåller +5 är bättre än ett spännande som riskerar allt.', drill: 'Öva att vinna vunna slutspel mot en dator (torn+kung mot kung, en extra pjäs).' },
     time_trouble: { title: 'Misstag i tidsnöd', what: 'Misstag/blunder gjorda med under 30 sekunder kvar på klockan.', fix: 'Använd tiden jämnare: de flesta 10-minutersspelare bränner för mycket i öppningen. Ha ett par öppningar du kan utantill så de första 8–10 dragen går fort.', drill: 'Lär dig 1 öppning som vit och 1 svar mot e4 + 1 mot d4 till drag 8.' },
-    rushed: { title: 'Spelade för snabbt med tid kvar', what: 'Misstag/blunder där du tänkte ≤3 sekunder trots att du hade gott om tid.', fix: 'Om ett drag är ett slag, ett schack eller flyttar en pjäs till motståndarens halva: ta alltid minst 10 sekunder. Snabba drag är fine i lugna ställningar – inte när det finns kontakt mellan pjäserna.', drill: 'Spela några partier där du tvingar dig att sitta på händerna 5 sekunder varje drag.' },
+    rushed: { title: 'Spelade för snabbt med tid kvar', what: 'Misstag/blunder där du tänkte ≤3 sekunder trots att du hade gott om tid.', fix: 'Om ett drag är ett slag, ett schack eller flyttar en pjäs till motståndarens halva: ta alltid minst 10 sekunder. Snabba drag är okej i lugna ställningar – inte när det finns kontakt mellan pjäserna.', drill: 'Spela några partier där du tvingar dig att sitta på händerna 5 sekunder varje drag.' },
     opening_trouble: { title: 'Dålig ställning redan efter öppningen', what: 'Vid drag 10 hade du ≤35 % vinstchans – partiet var redan i uppförsbacke.', fix: 'Se öppningstabellen: de öppningar där det går sämst är där du bör lära dig de första 8 dragen ordentligt, eller byta.', drill: 'Chess.com Lessons/Openings för den öppning du oftast hamnar i.' },
   },
   en: {
@@ -66,7 +66,7 @@ export function detectPatterns(rec) {
     const bad = m.label === 'Mistake' || m.label === 'Blunder';
     const sign = m.color === 'white' ? 1 : -1;
 
-    if (m.cpBefore * sign >= 9000 && m.cpAfter * sign < 9000) hits.push({ ...base, pattern: 'missed_mate' });
+    if (m.cpBefore * sign >= 9000 && m.cpAfter * sign < 9000 && m.uci !== m.best) hits.push({ ...base, pattern: 'missed_mate' });
 
     if (m.loss >= 5 && m.best && m.uci !== m.best) {
       const c = new Chess(m.fen);
@@ -74,6 +74,7 @@ export function detectPatterns(rec) {
       if (bm && bm.flags.includes('c') && see(m.fen, bm) >= 3) hits.push({ ...base, pattern: 'missed_free_piece' });
     }
 
+    let ownTactic = false;
     if (bad && m.replyBest) {
       const c = new Chess(m.fen);
       c.move(uciToMove(m.uci));
@@ -81,15 +82,16 @@ export function detectPatterns(rec) {
       const reply = c.moves({ verbose: true }).find((x) => x.from + x.to + (x.promotion || '') === m.replyBest);
       if (reply) {
         if (reply.flags.includes('c') && see(afterFen, reply) >= 3) {
-          hits.push({ ...base, pattern: 'hung_piece', victim: reply.captured });
+          hits.push({ ...base, pattern: 'hung_piece', victim: reply.captured }); ownTactic = true;
         } else {
           c.move(reply);
-          if (c.isCheck()) hits.push({ ...base, pattern: 'fork_check' });
+          if (c.isCheck()) { hits.push({ ...base, pattern: 'fork_check' }); ownTactic = true; }
         }
       }
     }
 
-    if (bad && i > 0 && (moves[i - 1].label === 'Mistake' || moves[i - 1].label === 'Blunder') && m.loss >= 10) {
+    // straffade inte: bara när det inte samtidigt var en egen hängning/gaffel (då är det den diagnosen som gäller)
+    if (bad && !ownTactic && i > 0 && (moves[i - 1].label === 'Mistake' || moves[i - 1].label === 'Blunder') && m.loss >= 10) {
       hits.push({ ...base, pattern: 'missed_punish' });
     }
     if (m.wpBefore >= 80 && m.wpAfter <= 55) hits.push({ ...base, pattern: 'threw_won' });

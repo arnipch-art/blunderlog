@@ -18,7 +18,7 @@
       <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="sv">SV</button><button type="button" data-lang="en">EN</button></div>
     </div>
     <form id="form" class="controls">
-      <label class="field grow"><span data-i18n="user"></span><input id="user" type="text" autocomplete="username" spellcheck="false" placeholder="hikaru" required></label>
+      <label class="field grow"><span data-i18n="user"></span><input id="user" type="text" autocomplete="off" spellcheck="false" placeholder="hikaru" required></label>
       <label class="field"><span data-i18n="games"></span>
         <select id="count"><option value="10" data-i18n-n="10"></option><option value="20" selected data-i18n-n="20"></option><option value="50" data-i18n-n="50"></option><option value="0" data-i18n="all"></option></select></label>
       <label class="field"><span data-i18n="accuracyLevel"></span>
@@ -36,7 +36,7 @@
       </div>
       <label class="auto"><input id="auto" type="checkbox" checked> <span data-i18n="autoCheck"></span></label>
     </form>
-    <div id="progress" hidden><div class="ptext"><span id="progress-game"></span> <span id="progress-text"></span></div><div class="ptrack"><div id="progress-bar"></div></div></div>
+    <div id="progress" hidden aria-live="polite"><div class="ptext"><span id="progress-game"></span> <span id="progress-text"></span></div><div class="ptrack"><div id="progress-bar"></div></div></div>
     <div id="error" class="error" hidden></div>
   </header>
 

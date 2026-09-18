@@ -8,9 +8,9 @@ Skriv in ditt chess.com-användarnamn och få en Stockfish-granskning av dina pa
 
 1. Partierna hämtas från [chess.com:s öppna API](https://www.chess.com/news/view/published-data-api) (ingen inloggning, klocktider ingår).
 2. Varje ställning analyseras av Stockfish 19 lite (MultiPV 2) med djup + tidstak.
-3. Eval → vinstprocent via `50 + 50·(2/(1+e^(−0.00368208·cp)) − 1)`; tappet i vinstprocent per drag ger etiketten (Best/Excellent/Good/Inaccuracy/Mistake/Blunder). Book slås upp i lichess öppningsdatabas, Great = enda bra draget, Brilliant = bästa draget som offrar material.
+3. Formlerna för win% och accuracy är Lichess publika (chess.com bygger på samma); etikett-trösklarna är egna. Eval → vinstprocent via `50 + 50·(2/(1+e^(−0.00368208·cp)) − 1)`; tappet i vinstprocent per drag ger etiketten (Best/Excellent/Good/Inaccuracy/Mistake/Blunder). Book slås upp i lichess öppningsdatabas, Great = enda bra draget, Brilliant = bästa draget som offrar material.
 4. Accuracy per drag `103.1668·e^(−0.04354·tapp) − 3.1669`, viktat med ställningens volatilitet; blandningen viktat/harmoniskt medel kalibreras mot chess.com:s egna accuracy-siffror när sådana finns.
-5. Uppskattad Elo = 60 % accuracy→rating (handvalda ankarpunkter i `js/elo.js`) + 40 % prestationsrating mot motståndarnas rating över de senaste 20 partierna. En uppskattning, inte en rating.
+5. Uppskattad spelstyrka visas som ett intervall mellan två skattningar över de senaste 20 partierna i din vanligaste tidsklass: accuracy→rating (handvalda ankarpunkter i `js/elo.js` – grova, inte fittade mot data) och prestationsrating mot motståndarnas rating (som på chess.com ≈ din egen rating ± form). En uppskattning, inte en rating.
 6. Mönster (hängd pjäs, gaffel, missad fri pjäs, missad matt, ostraffad blunder, tappad vinst, tidsnöd, för snabba drag, öppningsproblem) räknas på dina drag och rangordnas.
 
 ## Köra lokalt

@@ -5,6 +5,7 @@ export class Engine {
   constructor(path = 'vendor/stockfish-19-lite-single.js') {
     this.worker = new Worker(path);
     this.listeners = [];
+    this.worker.onerror = (e) => { for (const fn of this.listeners) fn(`error ${e.message || 'worker'}`); };
     this.worker.onmessage = (e) => {
       const line = typeof e.data === 'string' ? e.data : String(e.data);
       for (const fn of this.listeners) fn(line);
@@ -13,10 +14,12 @@ export class Engine {
 
   send(cmd) { this.worker.postMessage(cmd); }
 
-  waitFor(pred) {
-    return new Promise((resolve) => {
+  waitFor(pred, ms = 20000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.listeners = this.listeners.filter((f) => f !== fn); reject(new Error('Stockfish svarade inte (blockerad wasm?)')); }, ms);
       const fn = (line) => {
-        if (pred(line)) { this.listeners = this.listeners.filter((f) => f !== fn); resolve(line); }
+        if (line.startsWith('error ')) { clearTimeout(timer); reject(new Error(line)); }
+        if (pred(line)) { clearTimeout(timer); this.listeners = this.listeners.filter((f) => f !== fn); resolve(line); }
       };
       this.listeners.push(fn);
     });

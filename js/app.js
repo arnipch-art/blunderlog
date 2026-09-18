@@ -31,13 +31,17 @@ function metaFor(g, user) {
 }
 
 // Hämtar partier nyast först tills vi har `limit` oanalyserade i valda tidsklasser.
-async function fetchCandidates(user, classes, limit, have) {
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+// newerThan: hoppa över partier äldre än så (auto-kollen ska bara ta nya partier)
+async function fetchCandidates(user, classes, limit, have, newerThan = 0) {
   const { archives } = await api(`https://api.chess.com/pub/player/${encodeURIComponent(user)}/games/archives`);
   const out = [];
   for (const url of archives.slice().reverse()) {
     const { games } = await api(url);
     for (const g of games.slice().reverse()) {
-      if (g.rules !== 'chess' || !g.pgn) continue;
+      if (g.rules !== 'chess' || !g.pgn || (g.initial_setup && g.initial_setup !== START_FEN)) continue;
+      if (g.end_time <= newerThan) return out;
       const id = g.url.split('/').pop();
       if (!classes.has(g.time_class) || have.has(id)) continue;
       out.push({ id, pgn: g.pgn, meta: metaFor(g, user) });
@@ -71,15 +75,15 @@ async function analyseOne(cand, book, limit) {
   const reviews = reviewMoves(history, fens, infos, book);
   const myColor = cand.meta.color;
   return {
-    id: cand.id, meta: cand.meta, opening: openingName(fens, book), headers: header, plies: history.length,
+    id: cand.id, meta: cand.meta, opening: openingName(fens, book), headers: header, plies: history.length, profile: $('#profile').value,
     accuracy: { white: accuracyParts(reviews, infos, 'white'), black: accuracyParts(reviews, infos, 'black') },
     moves: reviews.map((r, i) => ({ ...r, mine: r.color === myColor, clock: clocks[i] ?? null })),
   };
 }
 
-async function run() {
+async function run({ onlyNew = false } = {}) {
   const user = $('#user').value.trim();
-  if (!user) return;
+  if (!user || state.running) return;
   const classes = new Set([...document.querySelectorAll('input[name=cls]:checked')].map((e) => e.value));
   const limit = Number($('#count').value);
   const profile = PROFILES[$('#profile').value];
@@ -94,7 +98,8 @@ async function run() {
     render();
     setProgress(t('fetching'), 0);
     const have = new Set(state.recs.map((r) => r.id));
-    const cands = await fetchCandidates(user, classes, limit, have);
+    const newerThan = onlyNew && state.recs.length ? Math.max(...state.recs.map((r) => r.meta.endTime)) : 0;
+    const cands = await fetchCandidates(user, classes, onlyNew ? 0 : limit, have, newerThan);
     if (!cands.length) { setProgress(t('noNew'), 1); return; }
     setProgress(t('starting'), 0);
     const book = await loadBook();
@@ -102,7 +107,8 @@ async function run() {
     for (let k = 0; k < cands.length; k++) {
       if (state.stop) break;
       $('#progress-game').textContent = t('gameOf', { k: k + 1, n: cands.length });
-      const rec = await analyseOne(cands[k], book, profile);
+      let rec;
+      try { rec = await analyseOne(cands[k], book, profile); } catch (err) { console.warn('hoppar över parti', cands[k].id, err); continue; }
       if (!rec) break;
       state.recs.push(rec);
       await saveReview(user, rec);
@@ -197,6 +203,6 @@ if (initial) {
   state.user = initial;
   loadReviews(initial).then((recs) => {
     state.recs = recs; render();
-    if (recs.length && $('#auto').checked) run();
+    if (recs.length && $('#auto').checked) run({ onlyNew: true });
   });
 }

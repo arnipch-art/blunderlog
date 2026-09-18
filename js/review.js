@@ -128,7 +128,7 @@ export function reviewMoves(history, fens, infos, bookData) {
 
     let label;
     if (inBook) label = 'Book';
-    else if (isBest && sac && wpB < 95 && wpA >= 45) label = 'Brilliant';
+    else if (isBest && sac && wpB < 80 && wpA >= 45) label = 'Brilliant'; // inte 'offer' när man redan står +5
     else if (isBest && !obvious && before.secondCp !== null && wpA - winPct(sign * before.secondCp) >= 10 && wpA >= 45) label = 'Great';
     else if (isBest) label = 'Best';
     else label = labelForLoss(loss);

@@ -3,7 +3,7 @@ import { COLORS, LABEL_ORDER, winPct, fmtEval, blendAcc } from './review.js';
 import { patternInfo, PHASES, phaseOf, detectPatterns, incrementOf } from './patterns.js';
 import { t } from './i18n.js';
 import { boardSvg } from './board.js';
-import { estimateElo, accToRating } from './elo.js';
+import { estimateElo } from './elo.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -25,7 +25,8 @@ function lineChart(vals, { y0 = 0, y1 = 100, color = '#5dbb63', smooth = null, h
 
 const movingAvg = (vals, k = 5) => vals.map((_, i) => mean(vals.slice(Math.max(0, i - k + 1), i + 1)));
 const bar = (pct, color) => `<div class="bar"><div style="width:${Math.max(0, Math.min(100, pct)).toFixed(0)}%;background:${color}"></div></div>`;
-const tag = (label) => `<span class="tag" style="background:${COLORS[label]}">${label}</span>`;
+const DARK_TAGS = new Set(['Blunder', 'Great', 'Book']);
+const tag = (label) => `<span class="tag"${DARK_TAGS.has(label) ? ' data-dark' : ''} style="background:${COLORS[label]}">${label}</span>`;
 
 export function myAcc(rec, blend) { return blendAcc(rec.accuracy[rec.meta.color], blend); }
 
@@ -86,19 +87,25 @@ export function renderDashboard(recs, user, blend, calib) {
 
   const elo = estimateElo(recs, accs);
 
-  const ranked = Object.entries(hitsBy).map(([p, hs]) => [p, hs.length / n, hs]).sort((a, b) => b[1] - a[1]);
+  // rankning på andel drabbade partier (ett långt slutspel ska inte kunna dominera), träffar som sekundärnyckel
+  const ranked = Object.entries(hitsBy).map(([p, hs]) => [p, new Set(hs.map((h) => h.game.id)).size / n, hs]).sort((a, b) => b[1] - a[1] || b[2].length - a[2].length);
 
   const example = (h) => {
     const g = h.game.meta;
     const mv = `${h.moveNo}.${g.color === 'white' ? '' : '..'}${esc(h.san)}`;
+    const sign = g.color === 'white' ? 1 : -1;
+    const m = h.game.moves[h.ply - 1];
+    let cost = `−${h.loss.toFixed(0)} %`;
+    if (h.pattern === 'missed_mate') cost = `${t('mateIn', { n: 10000 - Math.abs(m.cpBefore) })} → ${fmtEval(sign * m.cpAfter)}`;
+    if (h.pattern === 'opening_trouble') cost = `${t('wp10')}: ${m.wpAfter.toFixed(0)} %`;
     const extra = (h.spent != null ? ` · ${t('thought', { s: h.spent.toFixed(0) })}` : '') + (h.clock != null ? ` · ${t('left', { s: h.clock.toFixed(0) })}` : '');
-    return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>${t('best')}: <b>${esc(h.bestSan)}</b> · −${h.loss.toFixed(0)} %${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">vs ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" class="show-game">${t('report')}</a></div></div>`;
+    return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>${h.pattern === 'opening_trouble' ? esc(h.game.opening) : `${t('best')}: <b>${esc(h.bestSan)}</b>`} · ${cost}${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">vs ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" class="show-game">${t('report')}</a></div></div>`;
   };
 
   let patternHtml = '';
   ranked.forEach(([p, perGame, hs], idx) => {
     const info = patternInfo(p);
-    const worst = [...hs].sort((a, b) => b.loss - a.loss).slice(0, 3);
+    const worst = [...hs].sort((a, b) => (p === 'opening_trouble' ? a.game.moves[a.ply - 1].wpAfter - b.game.moves[b.ply - 1].wpAfter : b.loss - a.loss)).slice(0, 3);
     const phases = {};
     for (const h of hs) phases[h.phase] = (phases[h.phase] || 0) + 1;
     const ph = Object.entries(phases).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${t(k)} ${v}`).join(', ');
@@ -108,7 +115,7 @@ export function renderDashboard(recs, user, blend, calib) {
       for (const h of hs) v[h.victim] = (v[h.victim] || 0) + 1;
       extra = ` ${t('hungPieces')}: ` + Object.entries(v).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${t(PIECE_KEY[k] || k)} ×${c}`).join(', ') + '.';
     }
-    patternHtml += `<div class="card pattern"><div class="phead"><span class="rank">${idx + 1}</span><h3>${info.title}</h3><span class="stat">${hs.length} ${t('times')} · ${perGame.toFixed(2)}${t('perGame')} · ${ph}</span></div>
+    patternHtml += `<div class="card pattern"><div class="phead"><span class="rank">${idx + 1}</span><h3>${info.title}</h3><span class="stat">${hs.length} ${t('times')} · ${t('inGames', { k: new Set(hs.map((h) => h.game.id)).size, n })} · ${ph}</span></div>
 <p class="what">${info.what}${extra}</p><p class="fix"><b>${t('doThis')}:</b> ${info.fix}</p><p class="drill"><b>${t('drill')}:</b> ${info.drill}</p>
 <div class="examples">${worst.map(example).join('')}</div></div>`;
   });
@@ -124,7 +131,7 @@ export function renderDashboard(recs, user, blend, calib) {
     const g = r.meta, a = myAcc(r, blend);
     const bl = r.moves.filter((m) => m.mine && m.label === 'Blunder').length;
     const mi = r.moves.filter((m) => m.mine && m.label === 'Mistake').length;
-    return `<tr class="${g.outcome}"><td>${fmtDate(g.endTime).slice(5)}</td><td>${g.color === 'white' ? t('W') : t('B')}</td><td>${esc(g.opponent)} (${g.oppRating})</td><td>${t(g.outcome)}</td><td>${esc(r.opening.split(':')[0])}</td><td>${a.toFixed(0)}</td><td>${g.ccAccuracy ? g.ccAccuracy.toFixed(0) : '–'}</td><td>${accToRating(a)}</td><td>${mi}</td><td>${bl}</td><td><a href="#" data-game="${r.id}" class="show-game">${t('report')}</a> · <a href="${esc(g.url)}" target="_blank" rel="noopener">chess.com</a></td></tr>`;
+    return `<tr class="${g.outcome}"><td>${fmtDate(g.endTime).slice(5)}</td><td>${g.color === 'white' ? t('W') : t('B')}</td><td>${esc(g.opponent)} (${g.oppRating})</td><td>${t(g.outcome)}</td><td>${esc(r.opening.split(':')[0])}</td><td>${a.toFixed(0)}</td><td>${g.ccAccuracy ? g.ccAccuracy.toFixed(0) : '–'}</td><td>${mi}</td><td>${bl}</td><td><a href="#" data-game="${r.id}" class="show-game">${t('report')}</a> · <a href="${esc(g.url)}" target="_blank" rel="noopener">chess.com</a></td></tr>`;
   }).join('');
 
   const colorCard = (c) => {
@@ -147,7 +154,7 @@ export function renderDashboard(recs, user, blend, calib) {
 <h1>${esc(user)} – ${t('gamesN', { n })} (${classes})</h1>
 <div class="sub">${outcomes.win || 0} ${t('wins')} · ${outcomes.loss || 0} ${t('losses')} · ${outcomes.draw || 0} ${t('draws')} · ${t('lostBy')}: ${howLost || '–'}${calibNote}</div>
 <div class="grid">
-<div class="card"><h2>${t('eloHead')}</h2>${elo ? `<div class="big">~${elo.estimate}</div><div class="muted">${t('eloNote', { n: elo.n, a: elo.byAcc, p: elo.perf, r: elo.current })}</div>` : `<div class="muted">${t('eloFew')}</div>`}</div>
+<div class="card"><h2>${t('eloHead')}</h2>${elo ? `<div class="big">${elo.low}–${elo.high}</div><div class="muted">${t('eloNote', { n: elo.n, cls: elo.cls, a: elo.byAcc, p: elo.perf, r: elo.current })}</div>` : `<div class="muted">${t('eloFew')}</div>`}</div>
 <div class="card"><h2>${t('accAvg')}</h2><div class="big">${mean(accs).toFixed(0)}<small>%</small></div><div class="muted">${t('last10')}: ${mean(accs.slice(-10)).toFixed(0)} % · ${t('ratingNow')} ${ratings[ratings.length - 1]}</div></div>
 ${colorCard('white')}${colorCard('black')}
 <div class="card"><h2>${t('time')}</h2>${timeHtml}</div>
@@ -163,7 +170,7 @@ ${colorCard('white')}${colorCard('black')}
 <h2 class="section">${t('patternsHead')}</h2>
 ${patternHtml || `<p class="muted">${t('noPatterns')}</p>`}
 <div class="card"><h2>${t('openings')}</h2><div class="tbl"><table><tr><th>${t('color')}</th><th>${t('openingCol')}</th><th>${t('games')}</th><th>${t('winCol')}</th><th>${t('accCol')}</th><th>${t('wp10')}</th></tr>${opRows}</table></div></div>
-<div class="card"><h2>${t('allGames')}</h2><div class="tbl"><table><tr><th>${t('date')}</th><th></th><th>${t('opponent')}</th><th>${t('result')}</th><th>${t('openingCol')}</th><th>Acc</th><th>chess.com</th><th>${t('eloCol')}</th><th>?</th><th>??</th><th></th></tr>${gameRows}</table></div></div>`;
+<div class="card"><h2>${t('allGames')}</h2><div class="tbl"><table><tr><th>${t('date')}</th><th></th><th>${t('opponent')}</th><th>${t('result')}</th><th>${t('openingCol')}</th><th>Acc</th><th>chess.com</th><th title="Mistake">?</th><th title="Blunder">??</th><th></th></tr>${gameRows}</table></div></div>`;
 }
 
 // Partirapport: eval-graf + draglista

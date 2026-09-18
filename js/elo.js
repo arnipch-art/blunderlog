@@ -1,9 +1,8 @@
-// Uppskattad spelstyrka (Elo). Två oberoende skattningar som vägs ihop:
-//  1) accuracy -> rating via ankarpunkter (ungefärliga typiska accuracy-nivåer per
-//     rating i 10-minutersschack på chess.com; grov men monoton)
-//  2) prestationsrating på resultaten: motståndarnas snittrating + 400·(V−F)/N
-// Slutsiffran = 60 % accuracy-skattning + 40 % prestation. Det är en uppskattning,
-// inte en rating – en handfull partier ger lätt ±150.
+// Uppskattad spelstyrka. Två skattningar som visas som ett intervall:
+//  byAcc: accuracy -> rating via ankarpunkter (grova, handvalda – se README)
+//  perf:  prestationsrating på resultaten = motståndarnas snittrating + 400·(V−F)/N.
+//         OBS: chess.com matchar mot spelare nära din egen rating, så perf ≈ din rating ± form.
+// Räknas bara på den tidsklass du spelat mest av bland de senaste partierna, kräver ≥10 partier.
 const ANCHORS = [[35, 200], [45, 350], [55, 500], [62, 650], [68, 800], [74, 1000], [79, 1250], [84, 1500], [88, 1800], [92, 2100], [96, 2400], [100, 2800]];
 
 export function accToRating(acc) {
@@ -17,14 +16,18 @@ export function accToRating(acc) {
 
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
-// recs kronologiskt, accs = mina accuracy per parti. Använder de senaste `window` partierna.
+// recs kronologiskt, accs = mina accuracy per parti.
 export function estimateElo(recs, accs, window = 20) {
-  const n = Math.min(recs.length, window);
-  if (n < 3) return null;
-  const R = recs.slice(-n), A = accs.slice(-n);
+  const counts = {};
+  for (const r of recs.slice(-window)) counts[r.meta.timeClass] = (counts[r.meta.timeClass] || 0) + 1;
+  const cls = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const idx = recs.map((r, i) => [r, i]).filter(([r, i]) => r.meta.timeClass === cls && r.moves.some((m) => m.mine)).slice(-window);
+  const n = idx.length;
+  if (n < 10) return null;
+  const R = idx.map(([r]) => r), A = idx.map(([, i]) => accs[i]);
   const byAcc = Math.round(median(A.map(accToRating)));
   const score = R.reduce((s, r) => s + (r.meta.outcome === 'win' ? 1 : r.meta.outcome === 'draw' ? 0.5 : 0), 0);
   const oppAvg = R.reduce((s, r) => s + r.meta.oppRating, 0) / n;
   const perf = Math.round(oppAvg + 400 * (2 * score - n) / n);
-  return { estimate: Math.round(0.6 * byAcc + 0.4 * perf), byAcc, perf, n, current: R[R.length - 1].meta.myRating };
+  return { low: Math.min(byAcc, perf), high: Math.max(byAcc, perf), byAcc, perf, n, cls, current: R[R.length - 1].meta.myRating };
 }
