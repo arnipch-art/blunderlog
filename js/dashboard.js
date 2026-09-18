@@ -1,0 +1,188 @@
+// Renderar dashboarden ur en lista analyserade partier. Port av stats.py build().
+import { COLORS, LABEL_ORDER, winPct, fmtEval, blendAcc } from './review.js';
+import { PATTERNS, PHASES, phaseOf, detectPatterns, incrementOf } from './patterns.js';
+import { boardSvg } from './board.js';
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const fmtDate = (t) => new Date(t * 1000).toISOString().slice(0, 10);
+const SV_PIECE = { q: 'dam', r: 'torn', b: 'löpare', n: 'springare', p: 'bonde', k: 'kung' };
+const SV_OUTCOME = { win: 'vinst', loss: 'förlust', draw: 'remi' };
+const SV_RESULT = { checkmated: 'matt', resigned: 'gav upp', timeout: 'tiden', abandoned: 'lämnade' };
+
+function lineChart(vals, { y0 = 0, y1 = 100, color = '#5dbb63', smooth = null, hline = null } = {}) {
+  if (!vals.length) return '';
+  const w = 900, h = 180, pad = 28, n = vals.length;
+  const X = (i) => pad + (w - 2 * pad) * (n > 1 ? i / (n - 1) : 0.5);
+  const Y = (v) => pad + (h - 2 * pad) * (1 - (v - y0) / (y1 - y0));
+  const pts = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const dots = vals.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.5" fill="${color}"><title>${v.toFixed(0)}</title></circle>`).join('');
+  const sm = smooth ? `<polyline fill="none" style="stroke:var(--fg)" stroke-width="2" points="${smooth.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}"/>` : '';
+  const hl = hline != null ? `<line x1="${pad}" y1="${Y(hline).toFixed(1)}" x2="${w - pad}" y2="${Y(hline).toFixed(1)}" style="stroke:var(--grid)" stroke-dasharray="4 4"/>` : '';
+  const ticks = [y0, (y0 + y1) / 2, y1].map((t) => `<text x="4" y="${(Y(t) + 4).toFixed(1)}" style="fill:var(--muted)" font-size="10">${Math.round(t)}</text>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${hl}${ticks}<polyline fill="none" stroke="${color}" stroke-width="1" opacity=".5" points="${pts}"/>${sm}${dots}</svg>`;
+}
+
+const movingAvg = (vals, k = 5) => vals.map((_, i) => mean(vals.slice(Math.max(0, i - k + 1), i + 1)));
+const bar = (pct, color) => `<div class="bar"><div style="width:${Math.max(0, Math.min(100, pct)).toFixed(0)}%;background:${color}"></div></div>`;
+const tag = (label) => `<span class="tag" style="background:${COLORS[label]}">${label}</span>`;
+
+export function myAcc(rec, blend) { return blendAcc(rec.accuracy[rec.meta.color], blend); }
+
+export function calibrate(recs) {
+  const pairs = recs.filter((r) => r.meta.ccAccuracy).map((r) => [r, r.meta.ccAccuracy]);
+  if (pairs.length < 5) return null;
+  let best = null;
+  for (let k = 0; k <= 100; k++) {
+    const b = k / 100;
+    const err = mean(pairs.map(([r, cc]) => Math.abs(myAcc(r, b) - cc)));
+    if (!best || err < best.err) best = { blend: b, err, n: pairs.length };
+  }
+  return best;
+}
+
+export function renderDashboard(recs, user, blend, calib) {
+  const n = recs.length;
+  if (!n) return '';
+  const accs = recs.map((r) => myAcc(r, blend));
+  const ratings = recs.map((r) => r.meta.myRating);
+  const outcomes = {};
+  for (const r of recs) outcomes[r.meta.outcome] = (outcomes[r.meta.outcome] || 0) + 1;
+
+  const labelCounts = {}, phaseBad = {}, phaseMoves = {};
+  let myMoves = 0;
+  for (const r of recs) for (const m of r.moves) {
+    if (!m.mine) continue;
+    myMoves++;
+    labelCounts[m.label] = (labelCounts[m.label] || 0) + 1;
+    const ph = phaseOf(m.fen, Math.floor((m.ply + 1) / 2));
+    phaseMoves[ph] = (phaseMoves[ph] || 0) + 1;
+    if (m.label === 'Mistake' || m.label === 'Blunder') phaseBad[ph] = (phaseBad[ph] || 0) + 1;
+  }
+
+  const hitsBy = {};
+  for (const r of recs) for (const h of detectPatterns(r)) (hitsBy[h.pattern] ||= []).push(h);
+
+  const openings = {};
+  recs.forEach((r, i) => {
+    const name = r.opening !== '–' ? r.opening.split(':')[0] : 'okänd';
+    const wp10 = r.moves.find((m) => m.mine && Math.floor((m.ply + 1) / 2) === 10)?.wpAfter ?? null;
+    (openings[`${r.meta.color}|${name}`] ||= []).push([accs[i], r.meta.outcome, wp10]);
+  });
+
+  const lossHow = {};
+  for (const r of recs) if (r.meta.outcome === 'loss') lossHow[r.meta.result] = (lossHow[r.meta.result] || 0) + 1;
+
+  const spentBad = [], spentOk = [];
+  for (const r of recs) {
+    const inc = incrementOf(r.meta.timeControl);
+    let prev = null;
+    for (const m of r.moves) {
+      if (!m.mine || m.clock == null) continue;
+      if (prev != null) (m.label === 'Mistake' || m.label === 'Blunder' ? spentBad : spentOk).push(Math.max(0, prev + inc - m.clock));
+      prev = m.clock;
+    }
+  }
+
+  const ranked = Object.entries(hitsBy).map(([p, hs]) => [p, hs.length / n, hs]).sort((a, b) => b[1] - a[1]);
+
+  const example = (h) => {
+    const g = h.game.meta;
+    const mv = `${h.moveNo}.${g.color === 'white' ? '' : '..'}${esc(h.san)}`;
+    const extra = (h.spent != null ? ` · tänkte ${h.spent.toFixed(0)}s` : '') + (h.clock != null ? ` · ${h.clock.toFixed(0)}s kvar` : '');
+    return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>bäst: <b>${esc(h.bestSan)}</b> · −${h.loss.toFixed(0)} %${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">vs ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" class="show-game">rapport</a></div></div>`;
+  };
+
+  let patternHtml = '';
+  ranked.forEach(([p, perGame, hs], idx) => {
+    const info = PATTERNS[p];
+    const worst = [...hs].sort((a, b) => b.loss - a.loss).slice(0, 3);
+    const phases = {};
+    for (const h of hs) phases[h.phase] = (phases[h.phase] || 0) + 1;
+    const ph = Object.entries(phases).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+    let extra = '';
+    if (p === 'hung_piece') {
+      const v = {};
+      for (const h of hs) v[h.victim] = (v[h.victim] || 0) + 1;
+      extra = ' Pjäser du hängt: ' + Object.entries(v).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${SV_PIECE[k] || k} ×${c}`).join(', ') + '.';
+    }
+    patternHtml += `<div class="card pattern"><div class="phead"><span class="rank">${idx + 1}</span><h3>${info.title}</h3><span class="stat">${hs.length} ggr · ${perGame.toFixed(2)}/parti · ${ph}</span></div>
+<p class="what">${info.what}${extra}</p><p class="fix"><b>Gör så här:</b> ${info.fix}</p><p class="drill"><b>Övning:</b> ${info.drill}</p>
+<div class="examples">${worst.map(example).join('')}</div></div>`;
+  });
+
+  const opRows = Object.entries(openings).sort((a, b) => b[1].length - a[1].length).slice(0, 14).filter(([, l]) => l.length >= 2).map(([k, lst]) => {
+    const [color, name] = k.split('|');
+    const wins = lst.filter(([, o]) => o === 'win').length;
+    const wp10s = lst.map(([, , w]) => w).filter((w) => w != null);
+    return `<tr><td>${color === 'white' ? 'Vit' : 'Svart'}</td><td>${esc(name)}</td><td>${lst.length}</td><td>${(100 * wins / lst.length).toFixed(0)} %</td><td>${mean(lst.map(([a]) => a)).toFixed(0)} %</td><td>${wp10s.length ? mean(wp10s).toFixed(0) + ' %' : '–'}</td></tr>`;
+  }).join('');
+
+  const gameRows = [...recs].reverse().map((r) => {
+    const g = r.meta, a = myAcc(r, blend);
+    const bl = r.moves.filter((m) => m.mine && m.label === 'Blunder').length;
+    const mi = r.moves.filter((m) => m.mine && m.label === 'Mistake').length;
+    return `<tr class="${g.outcome}"><td>${fmtDate(g.endTime).slice(5)}</td><td>${g.color === 'white' ? 'V' : 'S'}</td><td>${esc(g.opponent)} (${g.oppRating})</td><td>${SV_OUTCOME[g.outcome]}</td><td>${esc(r.opening.split(':')[0])}</td><td>${a.toFixed(0)}</td><td>${g.ccAccuracy ? g.ccAccuracy.toFixed(0) : '–'}</td><td>${mi}</td><td>${bl}</td><td><a href="#" data-game="${r.id}" class="show-game">rapport</a> · <a href="${esc(g.url)}" target="_blank" rel="noopener">chess.com</a></td></tr>`;
+  }).join('');
+
+  const colorCard = (c) => {
+    const lst = recs.map((r, i) => [r, accs[i]]).filter(([r]) => r.meta.color === c);
+    if (!lst.length) return '';
+    const w = lst.filter(([r]) => r.meta.outcome === 'win').length;
+    return `<div class="card"><h2>${c === 'white' ? 'Som vit' : 'Som svart'}</h2><div class="big">${mean(lst.map(([, a]) => a)).toFixed(0)}<small>%</small></div><div class="muted">${lst.length} partier · ${(100 * w / lst.length).toFixed(0)} % vinster</div></div>`;
+  };
+
+  const labelsHtml = LABEL_ORDER.filter((k) => labelCounts[k]).map((k) => `<div class="cnt"><span class="dot" style="background:${COLORS[k]}"></span>${k}<span class="muted">${(100 * labelCounts[k] / myMoves).toFixed(1)} %</span><b>${labelCounts[k]}</b></div>`).join('');
+  const phaseHtml = PHASES.map((ph) => { const b = phaseBad[ph] || 0, t = phaseMoves[ph] || 0; return `<div class="cnt">${ph}<span class="muted">${b} av ${t} drag</span><b>${(100 * b / Math.max(1, t)).toFixed(1)} %</b></div>${bar(100 * b / Math.max(1, t) * 5, '#e67e22')}`; }).join('');
+  const howLost = Object.entries(lossHow).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SV_RESULT[k] || k} ${v}`).join(', ');
+  const timeHtml = spentBad.length && spentOk.length
+    ? `<div class="cnt">Snitt-tid per drag<b>${mean(spentOk).toFixed(1)} s</b></div><div class="cnt">Snitt-tid på misstag/blunders<b>${mean(spentBad).toFixed(1)} s</b></div><div class="cnt">Misstag gjorda på ≤3 s<b>${spentBad.filter((s) => s <= 3).length} av ${spentBad.length}</b></div>`
+    : '<div class="muted">inga klocktider</div>';
+  const classes = [...new Set(recs.map((r) => r.meta.timeClass))].sort().join(', ');
+  const calibNote = calib ? ` · accuracy kalibrerad mot ${calib.n} chess.com-siffror (medelfel ${calib.err.toFixed(1)} %)` : '';
+
+  return `
+<h1>${esc(user)} – ${n} partier (${classes})</h1>
+<div class="sub">${outcomes.win || 0} vinster · ${outcomes.loss || 0} förluster · ${outcomes.draw || 0} remier · förluster genom: ${howLost || '–'}${calibNote}</div>
+<div class="grid">
+<div class="card"><h2>Accuracy (snitt)</h2><div class="big">${mean(accs).toFixed(0)}<small>%</small></div><div class="muted">senaste 10: ${mean(accs.slice(-10)).toFixed(0)} % · rating nu ${ratings[ratings.length - 1]}</div></div>
+${colorCard('white')}${colorCard('black')}
+<div class="card"><h2>Tid</h2>${timeHtml}</div>
+</div>
+<div class="grid">
+<div class="card"><h2>Accuracy per parti (linje = glidande medel 5)</h2>${lineChart(accs, { smooth: movingAvg(accs), hline: mean(accs) })}</div>
+<div class="card"><h2>Rating</h2>${lineChart(ratings, { y0: Math.min(...ratings) - 30, y1: Math.max(...ratings) + 30, color: '#3498db' })}</div>
+</div>
+<div class="grid">
+<div class="card"><h2>Dina drag (${myMoves})</h2>${labelsHtml}</div>
+<div class="card"><h2>Misstag+blunders per fas</h2>${phaseHtml}</div>
+</div>
+<h2 class="section">Det här går igen – jobba på det i den här ordningen</h2>
+${patternHtml || '<p class="muted">Inga mönster hittade.</p>'}
+<div class="card"><h2>Öppningar (minst 2 partier)</h2><div class="tbl"><table><tr><th>Färg</th><th>Öppning</th><th>Partier</th><th>Vinst</th><th>Accuracy</th><th>Vinstchans vid drag 10</th></tr>${opRows}</table></div></div>
+<div class="card"><h2>Alla partier</h2><div class="tbl"><table><tr><th>Datum</th><th></th><th>Motståndare</th><th>Resultat</th><th>Öppning</th><th>Acc</th><th>chess.com</th><th>?</th><th>??</th><th></th></tr>${gameRows}</table></div></div>`;
+}
+
+// Partirapport: eval-graf + draglista
+export function renderGame(rec, blend) {
+  const g = rec.meta, h = rec.headers || {};
+  const infosWp = [winPct(rec.moves.length ? rec.moves[0].cpBefore : 0), ...rec.moves.map((m) => winPct(m.cpAfter))];
+  const W = 900, H = 200, P = 10, n = infosWp.length;
+  const xs = infosWp.map((_, i) => P + (W - 2 * P) * (n > 1 ? i / (n - 1) : 0));
+  const ys = infosWp.map((v) => P + (H - 2 * P) * (1 - v / 100));
+  const area = `M${xs[0].toFixed(1)},${H - P} ` + xs.map((x, i) => `L${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ') + ` L${xs[n - 1].toFixed(1)},${H - P} Z`;
+  const marks = rec.moves.filter((m) => ['Blunder', 'Mistake', 'Inaccuracy', 'Brilliant', 'Great'].includes(m.label))
+    .map((m) => `<circle cx="${xs[m.ply].toFixed(1)}" cy="${ys[m.ply].toFixed(1)}" r="5" fill="${COLORS[m.label]}" stroke="#222"><title>${m.ply}: ${esc(m.san)} – ${m.label}</title></circle>`).join('');
+  const cell = (m) => (m ? `<td class="san" title="win% ${m.wpBefore.toFixed(0)} → ${m.wpAfter.toFixed(0)} · bäst: ${esc(m.bestSan)}">${esc(m.san)}</td><td>${tag(m.label)}</td><td class="ev">${fmtEval(m.cpAfter)}</td>` : '<td></td><td></td><td></td>');
+  let rows = '';
+  for (let i = 0; i < rec.moves.length; i += 2) rows += `<tr><td class="num">${Math.floor(i / 2) + 1}.</td>${cell(rec.moves[i])}${cell(rec.moves[i + 1])}</tr>`;
+  const summary = (color) => {
+    const c = {};
+    for (const m of rec.moves) if (m.color === color) c[m.label] = (c[m.label] || 0) + 1;
+    return `<div class="acc">${blendAcc(rec.accuracy[color], blend).toFixed(1)}<small>%</small></div>` + LABEL_ORDER.filter((k) => c[k]).map((k) => `<div class="cnt"><span class="dot" style="background:${COLORS[k]}"></span>${k}<b>${c[k]}</b></div>`).join('');
+  };
+  return `<div class="gamehead"><div><b>${esc(h.White)} (${esc(h.WhiteElo)}) – ${esc(h.Black)} (${esc(h.BlackElo)})</b> ${esc(h.Result)}<br><span class="muted">${esc(rec.opening)} · ${esc(h.Date)} · ${esc(h.Termination || '')}</span></div><a href="${esc(g.url)}" target="_blank" rel="noopener">chess.com</a> <button class="close-game" type="button">Stäng</button></div>
+<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="evalgraph"><rect width="${W}" height="${H}" fill="#3b3b3b"/><path d="${area}" fill="#f0f0f0"/><line x1="${P}" y1="${H / 2}" x2="${W - P}" y2="${H / 2}" stroke="#c0392b" stroke-dasharray="4 4" opacity=".7"/>${marks}</svg>
+<div class="grid"><div class="card"><h2>Vit · ${esc(h.White)}</h2>${summary('white')}</div><div class="card"><h2>Svart · ${esc(h.Black)}</h2>${summary('black')}</div></div>
+<div class="card"><div class="tbl"><table class="moves">${rows}</table></div></div>`;
+}

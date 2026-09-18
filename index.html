@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blunderkollen</title>
+<meta name="description" content="Skriv in ditt chess.com-användarnamn och få en Stockfish-granskning av dina partier: accuracy, öppningar och de misstag du upprepar – allt körs i din webbläsare.">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="brand">Blunderkollen</div>
+      <p class="tagline">Stockfish går igenom dina chess.com-partier och visar vilka misstag du gör om och om igen – och vad du ska göra åt dem. Allt körs i din webbläsare, inget skickas någonstans.</p>
+    </div>
+    <form id="form" class="controls">
+      <label class="field grow"><span>chess.com-användarnamn</span><input id="user" type="text" autocomplete="username" spellcheck="false" placeholder="t.ex. hikaru" required></label>
+      <label class="field"><span>Partier</span>
+        <select id="count"><option value="10">10 senaste</option><option value="20" selected>20 senaste</option><option value="50">50 senaste</option><option value="0">alla</option></select></label>
+      <label class="field"><span>Noggrannhet</span>
+        <select id="profile"><option value="fast">snabb (djup 10)</option><option value="normal" selected>normal (djup 14)</option><option value="deep">noggrann (djup 18)</option></select></label>
+      <fieldset class="field classes"><legend>Tidsklass</legend>
+        <label><input type="checkbox" name="cls" value="rapid" checked> rapid</label>
+        <label><input type="checkbox" name="cls" value="blitz" checked> blitz</label>
+        <label><input type="checkbox" name="cls" value="bullet"> bullet</label>
+        <label><input type="checkbox" name="cls" value="daily" checked> daily</label>
+      </fieldset>
+      <div class="actions">
+        <button id="run" type="submit" class="primary">Analysera</button>
+        <button id="stop" type="button" hidden>Stoppa</button>
+        <button id="clear" type="button" class="quiet" hidden>Rensa sparat</button>
+      </div>
+    </form>
+    <div id="progress" hidden><div class="ptext"><span id="progress-game"></span> <span id="progress-text"></span></div><div class="ptrack"><div id="progress-bar"></div></div></div>
+    <div id="error" class="error" hidden></div>
+  </header>
+
+  <p id="empty" class="empty">Ett parti tar några sekunder upp till en halv minut att analysera beroende på dator och noggrannhet. Resultaten sparas i webbläsaren, så nästa gång analyseras bara nya partier. Bullet är avstängt som standard – det säger mindre om hur du tänker.</p>
+
+  <section id="game" class="game" hidden></section>
+  <main id="dashboard"></main>
+
+  <footer class="foot">
+    Motor: <a href="https://github.com/nmrugg/stockfish.js" rel="noopener">Stockfish.js 19 lite</a> (GPLv3) · dragregler: <a href="https://github.com/jhlywa/chess.js" rel="noopener">chess.js</a> · öppningsnamn: <a href="https://github.com/lichess-org/chess-openings" rel="noopener">lichess chess-openings</a> · partier via <a href="https://www.chess.com/news/view/published-data-api" rel="noopener">chess.com:s öppna API</a>.
+    Etiketter och accuracy följer chess.com:s publika beskrivning (win%-tapp per drag), men är en egen implementation och skiljer sig något från chess.com:s siffror.
+  </footer>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
