@@ -102,7 +102,10 @@ export function renderDashboard(recs, user, blend, calib) {
     return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>${h.pattern === 'opening_trouble' ? esc(h.game.opening) : `${t('best')}: <b>${esc(h.bestSan)}</b>`} · ${cost}${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">vs ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" class="show-game">${t('report')}</a></div></div>`;
   };
 
-  let patternHtml = '';
+  let patternHtml = '', tabsHtml = '';
+  let active = null;
+  try { active = localStorage.getItem('patternTab'); } catch { /* ignore */ }
+  if (!ranked.some(([p]) => p === active)) active = ranked[0]?.[0];
   ranked.forEach(([p, perGame, hs], idx) => {
     const info = patternInfo(p);
     const worst = [...hs].sort((a, b) => (p === 'opening_trouble' ? a.game.moves[a.ply - 1].wpAfter - b.game.moves[b.ply - 1].wpAfter : b.loss - a.loss)).slice(0, 3);
@@ -115,7 +118,9 @@ export function renderDashboard(recs, user, blend, calib) {
       for (const h of hs) v[h.victim] = (v[h.victim] || 0) + 1;
       extra = ` ${t('hungPieces')}: ` + Object.entries(v).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${t(PIECE_KEY[k] || k)} ×${c}`).join(', ') + '.';
     }
-    patternHtml += `<div class="card pattern"><div class="phead"><span class="rank">${idx + 1}</span><h3>${info.title}</h3><span class="stat">${hs.length} ${t('times')} · ${t('inGames', { k: new Set(hs.map((h) => h.game.id)).size, n })} · ${ph}</span></div>
+    const games = new Set(hs.map((h) => h.game.id)).size;
+    tabsHtml += `<button type="button" role="tab" class="ptab" data-pattern="${p}" aria-selected="${p === active}" ${p === active ? '' : 'tabindex="-1"'}><span class="rank">${idx + 1}</span><span class="ptab-title">${info.title}</span><span class="ptab-n">${games}/${n}</span></button>`;
+    patternHtml += `<div class="card pattern" role="tabpanel" data-pattern="${p}" ${p === active ? '' : 'hidden'}><div class="phead"><h3>${info.title}</h3><span class="stat">${hs.length} ${t('times')} · ${t('inGames', { k: games, n })} · ${ph}</span></div>
 <p class="what">${info.what}${extra}</p><p class="fix"><b>${t('doThis')}:</b> ${info.fix}</p><p class="drill"><b>${t('drill')}:</b> ${info.drill}</p>
 <div class="examples">${worst.map(example).join('')}</div></div>`;
   });
@@ -168,7 +173,7 @@ ${colorCard('white')}${colorCard('black')}
 <div class="card"><h2>${t('badPerPhase')}</h2>${phaseHtml}</div>
 </div>
 <h2 class="section">${t('patternsHead')}</h2>
-${patternHtml || `<p class="muted">${t('noPatterns')}</p>`}
+${patternHtml ? `<div class="ptabs" role="tablist">${tabsHtml}</div>${patternHtml}` : `<p class="muted">${t('noPatterns')}</p>`}
 <div class="card"><h2>${t('openings')}</h2><div class="tbl"><table><tr><th>${t('color')}</th><th>${t('openingCol')}</th><th>${t('games')}</th><th>${t('winCol')}</th><th>${t('accCol')}</th><th>${t('wp10')}</th></tr>${opRows}</table></div></div>
 <div class="card"><h2>${t('allGames')}</h2><div class="tbl"><table><tr><th>${t('date')}</th><th></th><th>${t('opponent')}</th><th>${t('result')}</th><th>${t('openingCol')}</th><th>Acc</th><th>chess.com</th><th title="Mistake">?</th><th title="Blunder">??</th><th></th></tr>${gameRows}</table></div></div>`;
 }

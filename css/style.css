@@ -44,7 +44,13 @@ h3{margin:0;font-size:17px}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
 .bar{height:5px;background:var(--track);border-radius:3px;margin:0 0 6px} .bar div{height:5px;border-radius:3px}
 svg{width:100%;height:auto;display:block;max-width:100%}
-.pattern{margin:14px 0} .phead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ptabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.ptab{display:inline-flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;font-weight:500;background:var(--card);border:1px solid var(--line);border-radius:20px;font-size:13px;color:var(--fg)}
+.ptab[aria-selected="true"]{border-color:var(--fg);font-weight:700}
+.ptab .rank{width:22px;height:22px;font-size:12px}
+.ptab-n{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.pattern{margin:0 0 14px} .phead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+@media (max-width:600px){.ptab-title{max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .rank{background:var(--rank-bg);color:var(--rank-fg);font-weight:800;border-radius:50%;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .stat{color:var(--muted);font-size:13px;margin-left:auto}
 .what{margin:8px 0 4px} .fix{margin:4px 0} .drill{margin:4px 0 10px;color:var(--muted)}

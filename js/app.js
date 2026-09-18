@@ -134,7 +134,21 @@ function showGame(id) {
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function selectPattern(p) {
+  for (const b of document.querySelectorAll('.ptab')) { const on = b.dataset.pattern === p; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }
+  for (const panel of document.querySelectorAll('.pattern[data-pattern]')) panel.hidden = panel.dataset.pattern !== p;
+  try { localStorage.setItem('patternTab', p); } catch { /* ignore */ }
+}
+document.addEventListener('keydown', (e) => {
+  const b = e.target.closest?.('.ptab');
+  if (!b || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  const tabs = [...document.querySelectorAll('.ptab')];
+  const next = tabs[(tabs.indexOf(b) + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+  selectPattern(next.dataset.pattern); next.focus(); e.preventDefault();
+});
 document.addEventListener('click', (e) => {
+  const tab = e.target.closest('.ptab');
+  if (tab) { selectPattern(tab.dataset.pattern); return; }
   const a = e.target.closest('a.show-game');
   if (a) { e.preventDefault(); showGame(a.dataset.game); }
   if (e.target.closest('.close-game')) { $('#game').hidden = true; $('#game').innerHTML = ''; }
