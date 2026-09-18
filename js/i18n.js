@@ -27,6 +27,7 @@ const STRINGS = {
     allGames: 'Alla partier', date: 'Datum', opponent: 'Motståndare', result: 'Resultat', white: 'Vit', black: 'Svart', W: 'V', B: 'S',
     win: 'vinst', loss: 'förlust', draw: 'remi', tooltip: 'win% {a} → {b} · bäst: {best}',
     eloHead: 'Uppskattad spelstyrka (grov)', eloNote: 'senaste {n} {cls}-partier · accuracy-nivån motsvarar ~{a} · resultaten mot motståndet ~{p} · chess.com-rating {r}. Uppskattning, inte rating – räkna med ±150.',
+    tabOverview: 'Översikt', tabPatterns: 'Misstag', tabOpenings: 'Öppningar', tabGames: 'Partier',
     eloFew: 'behöver minst 10 partier i samma tidsklass', inGames: 'i {k} av {n} partier', mateIn: 'matt i {n} missad',
   },
   en: {
@@ -56,6 +57,7 @@ const STRINGS = {
     allGames: 'All games', date: 'Date', opponent: 'Opponent', result: 'Result', white: 'White', black: 'Black', W: 'W', B: 'B',
     win: 'win', loss: 'loss', draw: 'draw', tooltip: 'win% {a} → {b} · best: {best}',
     eloHead: 'Estimated strength (rough)', eloNote: 'last {n} {cls} games · accuracy level corresponds to ~{a} · results vs opposition ~{p} · chess.com rating {r}. An estimate, not a rating – expect ±150.',
+    tabOverview: 'Overview', tabPatterns: 'Mistakes', tabOpenings: 'Openings', tabGames: 'Games',
     eloFew: 'needs at least 10 games in one time class', inGames: 'in {k} of {n} games', mateIn: 'mate in {n} missed',
   },
 };

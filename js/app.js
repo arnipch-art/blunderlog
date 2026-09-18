@@ -134,19 +134,28 @@ function showGame(id) {
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function selectMain(id) {
+  for (const b of document.querySelectorAll('.mtab')) { const on = b.dataset.main === id; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }
+  for (const p of document.querySelectorAll('.mtab-panel')) p.hidden = p.dataset.main !== id;
+  try { localStorage.setItem('mainTab', id); } catch { /* ignore */ }
+}
 function selectPattern(p) {
   for (const b of document.querySelectorAll('.ptab')) { const on = b.dataset.pattern === p; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }
   for (const panel of document.querySelectorAll('.pattern[data-pattern]')) panel.hidden = panel.dataset.pattern !== p;
   try { localStorage.setItem('patternTab', p); } catch { /* ignore */ }
 }
 document.addEventListener('keydown', (e) => {
-  const b = e.target.closest?.('.ptab');
+  const b = e.target.closest?.('.ptab, .mtab');
   if (!b || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-  const tabs = [...document.querySelectorAll('.ptab')];
+  const isMain = b.classList.contains('mtab');
+  const tabs = [...document.querySelectorAll(isMain ? '.mtab' : '.ptab')];
   const next = tabs[(tabs.indexOf(b) + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
-  selectPattern(next.dataset.pattern); next.focus(); e.preventDefault();
+  if (isMain) selectMain(next.dataset.main); else selectPattern(next.dataset.pattern);
+  next.focus(); e.preventDefault();
 });
 document.addEventListener('click', (e) => {
+  const mt = e.target.closest('.mtab');
+  if (mt) { selectMain(mt.dataset.main); return; }
   const tab = e.target.closest('.ptab');
   if (tab) { selectPattern(tab.dataset.pattern); return; }
   const a = e.target.closest('a.show-game');

@@ -155,10 +155,15 @@ export function renderDashboard(recs, user, blend, calib) {
   const classes = [...new Set(recs.map((r) => r.meta.timeClass))].sort().join(', ');
   const calibNote = calib ? ` · ${t('calibNote', { n: calib.n, err: calib.err.toFixed(1) })}` : '';
 
+  let main = 'overview';
+  try { main = localStorage.getItem('mainTab') || 'overview'; } catch { /* ignore */ }
+  const sec = (id, html) => `<section class="mtab-panel" role="tabpanel" data-main="${id}" ${id === main ? '' : 'hidden'}>${html}</section>`;
+  const mtab = (id, label) => `<button type="button" role="tab" class="mtab" data-main="${id}" aria-selected="${id === main}" ${id === main ? '' : 'tabindex="-1"'}>${label}</button>`;
   return `
 <h1>${esc(user)} – ${t('gamesN', { n })} (${classes})</h1>
 <div class="sub">${outcomes.win || 0} ${t('wins')} · ${outcomes.loss || 0} ${t('losses')} · ${outcomes.draw || 0} ${t('draws')} · ${t('lostBy')}: ${howLost || '–'}${calibNote}</div>
-<div class="grid">
+<div class="mtabs" role="tablist">${mtab('overview', t('tabOverview'))}${mtab('patterns', t('tabPatterns'))}${mtab('openings', t('tabOpenings'))}${mtab('games', t('tabGames'))}</div>
+${sec('overview', `<div class="grid">
 <div class="card"><h2>${t('eloHead')}</h2>${elo ? `<div class="big">${elo.low}–${elo.high}</div><div class="muted">${t('eloNote', { n: elo.n, cls: elo.cls, a: elo.byAcc, p: elo.perf, r: elo.current })}</div>` : `<div class="muted">${t('eloFew')}</div>`}</div>
 <div class="card"><h2>${t('accAvg')}</h2><div class="big">${mean(accs).toFixed(0)}<small>%</small></div><div class="muted">${t('last10')}: ${mean(accs.slice(-10)).toFixed(0)} % · ${t('ratingNow')} ${ratings[ratings.length - 1]}</div></div>
 ${colorCard('white')}${colorCard('black')}
@@ -171,11 +176,11 @@ ${colorCard('white')}${colorCard('black')}
 <div class="grid">
 <div class="card"><h2>${t('yourMoves')} (${myMoves})</h2>${labelsHtml}</div>
 <div class="card"><h2>${t('badPerPhase')}</h2>${phaseHtml}</div>
-</div>
-<h2 class="section">${t('patternsHead')}</h2>
-${patternHtml ? `<div class="ptabs" role="tablist">${tabsHtml}</div>${patternHtml}` : `<p class="muted">${t('noPatterns')}</p>`}
-<div class="card"><h2>${t('openings')}</h2><div class="tbl"><table><tr><th>${t('color')}</th><th>${t('openingCol')}</th><th>${t('games')}</th><th>${t('winCol')}</th><th>${t('accCol')}</th><th>${t('wp10')}</th></tr>${opRows}</table></div></div>
-<div class="card"><h2>${t('allGames')}</h2><div class="tbl"><table><tr><th>${t('date')}</th><th></th><th>${t('opponent')}</th><th>${t('result')}</th><th>${t('openingCol')}</th><th>Acc</th><th>chess.com</th><th title="Mistake">?</th><th title="Blunder">??</th><th></th></tr>${gameRows}</table></div></div>`;
+</div>`)}
+${sec('patterns', `<h2 class="section">${t('patternsHead')}</h2>
+${patternHtml ? `<div class="ptabs" role="tablist">${tabsHtml}</div>${patternHtml}` : `<p class="muted">${t('noPatterns')}</p>`}`)}
+${sec('openings', `<div class="card"><h2>${t('openings')}</h2><div class="tbl"><table><tr><th>${t('color')}</th><th>${t('openingCol')}</th><th>${t('games')}</th><th>${t('winCol')}</th><th>${t('accCol')}</th><th>${t('wp10')}</th></tr>${opRows}</table></div></div>`)}
+${sec('games', `<div class="card"><h2>${t('allGames')}</h2><div class="tbl"><table><tr><th>${t('date')}</th><th></th><th>${t('opponent')}</th><th>${t('result')}</th><th>${t('openingCol')}</th><th>Acc</th><th>chess.com</th><th title="Mistake">?</th><th title="Blunder">??</th><th></th></tr>${gameRows}</table></div></div>`)}`;
 }
 
 // Partirapport: eval-graf + draglista
