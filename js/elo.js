@@ -15,8 +15,6 @@ export function accToRating(acc) {
   return ANCHORS[ANCHORS.length - 1][1];
 }
 
-const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-
 // recs kronologiskt, accs = mina accuracy per parti.
 export function estimateElo(recs, accs, window = 20) {
   const counts = {};
@@ -26,7 +24,8 @@ export function estimateElo(recs, accs, window = 20) {
   const n = idx.length;
   if (n < 10) return null;
   const R = idx.map(([r]) => r), A = idx.map(([, i]) => accs[i]);
-  const byAcc = Math.round(median(A.map(accToRating)));
+  // på snitt-accuracyn (samma siffra som visas på översikten), inte median av per-parti-skattningar
+  const byAcc = accToRating(A.reduce((x, y) => x + y, 0) / A.length);
   const score = R.reduce((s, r) => s + (r.meta.outcome === 'win' ? 1 : r.meta.outcome === 'draw' ? 0.5 : 0), 0);
   const oppAvg = R.reduce((s, r) => s + r.meta.oppRating, 0) / n;
   const perf = Math.round(oppAvg + 400 * (2 * score - n) / n);
