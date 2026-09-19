@@ -4,6 +4,7 @@ import { patternInfo, PHASES, phaseOf, detectPatterns, incrementOf } from './pat
 import { t } from './i18n.js';
 import { boardSvg } from './board.js';
 import { estimateElo } from './elo.js';
+import { badge } from './gameview.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -99,7 +100,7 @@ export function renderDashboard(recs, user, blend, calib) {
     if (h.pattern === 'missed_mate') cost = `${t('mateIn', { n: 10000 - Math.abs(m.cpBefore) })} → ${fmtEval(sign * m.cpAfter)}`;
     if (h.pattern === 'opening_trouble') cost = `${t('wp10')}: ${m.wpAfter.toFixed(0)} %`;
     const extra = (h.spent != null ? ` · ${t('thought', { s: h.spent.toFixed(0) })}` : '') + (h.clock != null ? ` · ${t('left', { s: h.clock.toFixed(0) })}` : '');
-    return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>${h.pattern === 'opening_trouble' ? esc(h.game.opening) : `${t('best')}: <b>${esc(h.bestSan)}</b>`} · ${cost}${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">vs ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" class="show-game">${t('report')}</a></div></div>`;
+    return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>${h.pattern === 'opening_trouble' ? esc(h.game.opening) : `${t('best')}: <b>${esc(h.bestSan)}</b>`} · ${cost}${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">vs ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" data-ply="${h.ply}" class="show-game">${t('report')}</a></div></div>`;
   };
 
   let patternHtml = '', tabsHtml = '';
@@ -146,7 +147,7 @@ export function renderDashboard(recs, user, blend, calib) {
     return `<div class="card"><h2>${c === 'white' ? t('asWhite') : t('asBlack')}</h2><div class="big">${mean(lst.map(([, a]) => a)).toFixed(0)}<small>%</small></div><div class="muted">${t('gamesN', { n: lst.length })} · ${(100 * w / lst.length).toFixed(0)} ${t('winPct')}</div></div>`;
   };
 
-  const labelsHtml = LABEL_ORDER.filter((k) => labelCounts[k]).map((k) => `<div class="cnt"><span class="dot" style="background:${COLORS[k]}"></span>${k}<span class="muted">${(100 * labelCounts[k] / myMoves).toFixed(1)} %</span><b>${labelCounts[k]}</b></div>`).join('');
+  const labelsHtml = LABEL_ORDER.filter((k) => labelCounts[k]).map((k) => `<div class="cnt">${badge(k)}${k}<span class="muted">${(100 * labelCounts[k] / myMoves).toFixed(1)} %</span><b>${labelCounts[k]}</b></div>`).join('');
   const phaseHtml = PHASES.map((ph) => { const b = phaseBad[ph] || 0, tot = phaseMoves[ph] || 0; return `<div class="cnt">${t(ph)}<span class="muted">${b} ${t('of')} ${tot} ${t('moves')}</span><b>${(100 * b / Math.max(1, tot)).toFixed(1)} %</b></div>${bar(100 * b / Math.max(1, tot) * 5, '#e67e22')}`; }).join('');
   const howLost = Object.entries(lossHow).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${t(k)} ${v}`).join(', ');
   const timeHtml = spentBad.length && spentOk.length
@@ -179,29 +180,5 @@ ${colorCard('white')}${colorCard('black')}
 ${sec('patterns', `<h2 class="section">${t('patternsHead')}</h2>
 ${patternHtml ? `<div class="ptabs" role="tablist">${tabsHtml}</div>${patternHtml}` : `<p class="muted">${t('noPatterns')}</p>`}`)}
 ${sec('openings', `<div class="card"><h2>${t('openings')}</h2><div class="tbl"><table><tr><th>${t('color')}</th><th>${t('openingCol')}</th><th>${t('games')}</th><th>${t('winCol')}</th><th>${t('accCol')}</th><th>${t('wp10')}</th></tr>${opRows}</table></div></div>`)}
-${sec('games', `<div class="card"><h2>${t('allGames')}</h2><div class="tbl"><table><tr><th>${t('date')}</th><th></th><th>${t('opponent')}</th><th>${t('result')}</th><th>${t('openingCol')}</th><th>Acc</th><th>chess.com</th><th title="Mistake">?</th><th title="Blunder">??</th><th></th></tr>${gameRows}</table></div></div>`)}`;
-}
-
-// Partirapport: eval-graf + draglista
-export function renderGame(rec, blend) {
-  const g = rec.meta, h = rec.headers || {};
-  const infosWp = [winPct(rec.moves.length ? rec.moves[0].cpBefore : 0), ...rec.moves.map((m) => winPct(m.cpAfter))];
-  const W = 900, H = 200, P = 10, n = infosWp.length;
-  const xs = infosWp.map((_, i) => P + (W - 2 * P) * (n > 1 ? i / (n - 1) : 0));
-  const ys = infosWp.map((v) => P + (H - 2 * P) * (1 - v / 100));
-  const area = `M${xs[0].toFixed(1)},${H - P} ` + xs.map((x, i) => `L${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ') + ` L${xs[n - 1].toFixed(1)},${H - P} Z`;
-  const marks = rec.moves.filter((m) => ['Blunder', 'Mistake', 'Inaccuracy', 'Brilliant', 'Great'].includes(m.label))
-    .map((m) => `<circle cx="${xs[m.ply].toFixed(1)}" cy="${ys[m.ply].toFixed(1)}" r="5" fill="${COLORS[m.label]}" stroke="#222"><title>${m.ply}: ${esc(m.san)} – ${m.label}</title></circle>`).join('');
-  const cell = (m) => (m ? `<td class="san" title="${t('tooltip', { a: m.wpBefore.toFixed(0), b: m.wpAfter.toFixed(0), best: esc(m.bestSan) })}">${esc(m.san)}</td><td>${tag(m.label)}</td><td class="ev">${fmtEval(m.cpAfter)}</td>` : '<td></td><td></td><td></td>');
-  let rows = '';
-  for (let i = 0; i < rec.moves.length; i += 2) rows += `<tr><td class="num">${Math.floor(i / 2) + 1}.</td>${cell(rec.moves[i])}${cell(rec.moves[i + 1])}</tr>`;
-  const summary = (color) => {
-    const c = {};
-    for (const m of rec.moves) if (m.color === color) c[m.label] = (c[m.label] || 0) + 1;
-    return `<div class="acc">${blendAcc(rec.accuracy[color], blend).toFixed(1)}<small>%</small></div>` + LABEL_ORDER.filter((k) => c[k]).map((k) => `<div class="cnt"><span class="dot" style="background:${COLORS[k]}"></span>${k}<b>${c[k]}</b></div>`).join('');
-  };
-  return `<div class="gamehead"><div><b>${esc(h.White)} (${esc(h.WhiteElo)}) – ${esc(h.Black)} (${esc(h.BlackElo)})</b> ${esc(h.Result)}<br><span class="muted">${esc(rec.opening)} · ${esc(h.Date)} · ${esc(h.Termination || '')}</span></div><a href="${esc(g.url)}" target="_blank" rel="noopener">chess.com</a> <button class="close-game" type="button">${t('close')}</button></div>
-<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="evalgraph"><rect width="${W}" height="${H}" fill="#3b3b3b"/><path d="${area}" fill="#f0f0f0"/><line x1="${P}" y1="${H / 2}" x2="${W - P}" y2="${H / 2}" stroke="#c0392b" stroke-dasharray="4 4" opacity=".7"/>${marks}</svg>
-<div class="grid"><div class="card"><h2>${t('white')} · ${esc(h.White)}</h2>${summary('white')}</div><div class="card"><h2>${t('black')} · ${esc(h.Black)}</h2>${summary('black')}</div></div>
-<div class="card"><div class="tbl"><table class="moves">${rows}</table></div></div>`;
+${sec('games', `<div class="card"><h2>${t('allGames')}</h2><div class="tbl"><table><tr><th>${t('date')}</th><th></th><th>${t('opponent')}</th><th>${t('result')}</th><th>${t('openingCol')}</th><th>Acc</th><th>chess.com</th><th>${badge('Mistake', 'sm')}</th><th>${badge('Blunder', 'sm')}</th><th></th></tr>${gameRows}</table></div></div>`)}`;
 }

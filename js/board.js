@@ -1,4 +1,8 @@
-// Litet SVG-bräde med pilar. Rött = spelat drag, grönt = bästa draget.
+// SVG-bräde med pilar, senaste-drag-markering och etikettbricka.
+// played = röd pil, best = grön pil, lastMove = gula rutor, badge = {square, label}.
+import { COLORS } from './review.js';
+const SYM = { Brilliant: '!!', Great: '!', Best: '★', Excellent: '✓', Good: '✓', Book: '📖', Inaccuracy: '?!', Mistake: '?', Blunder: '??' };
+const DARK = new Set(['Blunder', 'Great', 'Book']);
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 
 function sqXY(sq, flip) {
@@ -19,7 +23,7 @@ function arrow(from, to, color, flip) {
     `<polygon points="${x2},${y2} ${hx + px},${hy + py} ${hx - px},${hy - py}" fill="${color}" opacity=".85"/>`;
 }
 
-export function boardSvg(fen, { played, best, orientation = 'white', size = 200 } = {}) {
+export function boardSvg(fen, { played, best, lastMove, badge, orientation = 'white', size = 200 } = {}) {
   const flip = orientation === 'black';
   const rows = fen.split(' ')[0].split('/');
   let squares = '', pieces = '';
@@ -42,7 +46,18 @@ export function boardSvg(fen, { played, best, orientation = 'white', size = 200 
     }
   }
   let arrows = '';
+  if (lastMove) {
+    for (const sq of [lastMove.slice(0, 2), lastMove.slice(2, 4)]) {
+      const [cx, cy] = sqXY(sq, flip);
+      squares += `<rect x="${cx - 12.5}" y="${cy - 12.5}" width="25" height="25" fill="#f6f669" opacity=".45"/>`;
+    }
+  }
   if (played) arrows += arrow(played.slice(0, 2), played.slice(2, 4), '#c0392b', flip);
   if (best) arrows += arrow(best.slice(0, 2), best.slice(2, 4), '#27ae60', flip);
-  return `<svg viewBox="0 0 200 200" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" class="board">${squares}${pieces}${arrows}</svg>`;
+  let mark = '';
+  if (badge) {
+    const [cx, cy] = sqXY(badge.square, flip);
+    mark = `<circle cx="${cx + 10}" cy="${cy - 10}" r="7.5" fill="${COLORS[badge.label]}" stroke="#fff" stroke-width="1.2"/><text x="${cx + 10}" y="${cy - 9.5}" font-size="8" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${DARK.has(badge.label) ? '#fff' : '#111'}" font-family="-apple-system,Helvetica,Arial,sans-serif">${SYM[badge.label]}</text>`;
+  }
+  return `<svg viewBox="0 0 200 200" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" class="board">${squares}${pieces}${arrows}${mark}</svg>`;
 }

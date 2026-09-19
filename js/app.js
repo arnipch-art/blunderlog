@@ -2,7 +2,8 @@
 import { Engine } from './engine.js';
 import { loadBook, parsePgn, analyseGame, reviewMoves, openingName, accuracyParts, ACC_BLEND, relabel, LABEL_VERSION } from './review.js';
 import { loadReviews, saveReview, clearUser } from './storage.js';
-import { renderDashboard, renderGame, calibrate } from './dashboard.js';
+import { renderDashboard, calibrate } from './dashboard.js';
+import { mountGame, unmountGame } from './gameview.js';
 import { t, getLang, setLang } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
@@ -133,11 +134,11 @@ async function run({ onlyNew = false } = {}) {
   }
 }
 
-function showGame(id) {
+function showGame(id, ply = null) {
   const rec = state.recs.find((r) => r.id === id);
   if (!rec) return;
   const panel = $('#game');
-  panel.innerHTML = renderGame(rec, state.blend);
+  mountGame(panel, rec, state.blend, ply);
   panel.dataset.id = id;
   panel.hidden = false;
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -168,8 +169,8 @@ document.addEventListener('click', (e) => {
   const tab = e.target.closest('.ptab');
   if (tab) { selectPattern(tab.dataset.pattern); return; }
   const a = e.target.closest('a.show-game');
-  if (a) { e.preventDefault(); showGame(a.dataset.game); }
-  if (e.target.closest('.close-game')) { $('#game').hidden = true; $('#game').innerHTML = ''; }
+  if (a) { e.preventDefault(); showGame(a.dataset.game, a.dataset.ply ? Number(a.dataset.ply) : null); }
+  if (e.target.closest('.close-game')) { unmountGame(); $('#game').hidden = true; $('#game').innerHTML = ''; }
 });
 $('#run').addEventListener('click', run);
 $('#stop').addEventListener('click', () => { state.stop = true; state.engine?.stop(); });
