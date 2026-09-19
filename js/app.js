@@ -1,6 +1,6 @@
 // Flöde: användarnamn -> hämta partier från chess.com -> analysera i webbläsaren -> dashboard.
 import { Engine } from './engine.js';
-import { loadBook, parsePgn, analyseGame, reviewMoves, openingName, accuracyParts, ACC_BLEND } from './review.js';
+import { loadBook, parsePgn, analyseGame, reviewMoves, openingName, accuracyParts, ACC_BLEND, relabel, LABEL_VERSION } from './review.js';
 import { loadReviews, saveReview, clearUser } from './storage.js';
 import { renderDashboard, renderGame, calibrate } from './dashboard.js';
 import { t, getLang, setLang } from './i18n.js';
@@ -75,10 +75,18 @@ async function analyseOne(cand, book, limit) {
   const reviews = reviewMoves(history, fens, infos, book);
   const myColor = cand.meta.color;
   return {
-    id: cand.id, meta: cand.meta, opening: openingName(fens, book), headers: header, plies: history.length, profile: $('#profile').value,
+    id: cand.id, meta: cand.meta, opening: openingName(fens, book), headers: header, plies: history.length, profile: $('#profile').value, labelVersion: LABEL_VERSION,
     accuracy: { white: accuracyParts(reviews, infos, 'white'), black: accuracyParts(reviews, infos, 'black') },
     moves: reviews.map((r, i) => ({ ...r, mine: r.color === myColor, clock: clocks[i] ?? null })),
   };
+}
+
+// Sparade partier med äldre etikettregler får nya etiketter (ingen motor behövs)
+async function upgradeLabels(user, recs) {
+  const stale = recs.filter((r) => r.labelVersion !== LABEL_VERSION);
+  if (!stale.length) return;
+  const book = await loadBook();
+  for (const r of stale) { relabel(r, book); await saveReview(user, r); }
 }
 
 async function run({ onlyNew = false } = {}) {
@@ -95,6 +103,7 @@ async function run({ onlyNew = false } = {}) {
   try {
     setProgress(t('loadingSaved'), 0);
     state.recs = await loadReviews(user);
+    await upgradeLabels(user, state.recs);
     render();
     setProgress(t('fetching'), 0);
     const have = new Set(state.recs.map((r) => r.id));
@@ -224,8 +233,8 @@ const initial = new URLSearchParams(location.search).get('user');
 if (initial) {
   $('#user').value = initial;
   state.user = initial;
-  loadReviews(initial).then((recs) => {
-    state.recs = recs; render();
+  loadReviews(initial).then(async (recs) => {
+    state.recs = recs; await upgradeLabels(initial, recs); render();
     if (recs.length && $('#auto').checked) run({ onlyNew: true });
   });
 }

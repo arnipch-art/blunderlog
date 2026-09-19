@@ -101,6 +101,41 @@ export async function analyseGame(history, engine, limit, onProgress, shouldStop
   return { infos, fens };
 }
 
+// Etikettlogiken samlad så att sparade partier kan få nya etiketter utan motor.
+// Höj LABEL_VERSION när reglerna ändras.
+export const LABEL_VERSION = 2;
+
+export function classify({ inBook, isBest, loss, wpB, wpA, secondWp, sac, obvious }) {
+  if (inBook) return 'Book';
+  // Brilliant som chess.com: ett offer (pjäsen kan slås med materialvinst), draget är bästa
+  // eller nästan bästa, ställningen håller efteråt, och ingen matt redan på brädet.
+  if (sac && loss < 5 && wpA >= 45 && wpB < 98) return 'Brilliant';
+  if (isBest && !obvious && secondWp !== null && wpA - secondWp >= 10 && wpA >= 45) return 'Great';
+  if (isBest) return 'Best';
+  return labelForLoss(loss);
+}
+
+export function relabel(rec, bookData) {
+  let inBook = true;
+  for (const m of rec.moves) {
+    const c = new Chess(m.fen);
+    const mv = c.move({ from: m.uci.slice(0, 2), to: m.uci.slice(2, 4), promotion: m.uci[4] });
+    if (!mv) continue;
+    inBook = inBook && bookData.positions.has(posKey(c.fen()));
+    const sign = m.color === 'white' ? 1 : -1;
+    const exchange = see(m.fen, mv);
+    const isBest = m.best !== null && m.uci === m.best;
+    m.sacrifice = mv.piece !== 'p' && mv.piece !== 'k' && exchange <= -2;
+    m.label = classify({
+      inBook, isBest, loss: m.loss, wpB: m.wpBefore, wpA: m.wpAfter,
+      secondWp: m.secondCp === null || m.secondCp === undefined ? null : winPct(sign * m.secondCp),
+      sac: m.sacrifice, obvious: mv.flags.includes('c') && exchange > 0,
+    });
+  }
+  rec.labelVersion = LABEL_VERSION;
+  return rec;
+}
+
 export function reviewMoves(history, fens, infos, bookData) {
   const out = [];
   let inBook = true;
@@ -126,12 +161,9 @@ export function reviewMoves(history, fens, infos, bookData) {
     const sac = mv.piece !== 'p' && mv.piece !== 'k' && exchange <= -2;
     const obvious = mv.flags.includes('c') && exchange > 0;
 
-    let label;
-    if (inBook) label = 'Book';
-    else if (isBest && sac && wpB < 80 && wpA >= 45) label = 'Brilliant'; // inte 'offer' när man redan står +5
-    else if (isBest && !obvious && before.secondCp !== null && wpA - winPct(sign * before.secondCp) >= 10 && wpA >= 45) label = 'Great';
-    else if (isBest) label = 'Best';
-    else label = labelForLoss(loss);
+    const label = classify({
+      inBook, isBest, loss, wpB, wpA, secondWp: before.secondCp === null ? null : winPct(sign * before.secondCp), sac, obvious,
+    });
 
     out.push({
       ply: i + 1, color: white ? 'white' : 'black', san: mv.san, uci, best: before.best, bestSan,

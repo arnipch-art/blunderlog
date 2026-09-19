@@ -167,7 +167,6 @@ ${sec('overview', `<div class="grid">
 <div class="card"><h2>${t('eloHead')}</h2>${elo ? `<div class="big">${elo.low}–${elo.high}</div><div class="muted">${t('eloNote', { n: elo.n, cls: elo.cls, a: elo.byAcc, p: elo.perf, r: elo.current })}</div>` : `<div class="muted">${t('eloFew')}</div>`}</div>
 <div class="card"><h2>${t('accAvg')}</h2><div class="big">${mean(accs).toFixed(0)}<small>%</small></div><div class="muted">${t('last10')}: ${mean(accs.slice(-10)).toFixed(0)} % · ${t('ratingNow')} ${ratings[ratings.length - 1]}</div></div>
 ${colorCard('white')}${colorCard('black')}
-<div class="card"><h2>${t('time')}</h2>${timeHtml}</div>
 </div>
 <div class="grid">
 <div class="card"><h2>${t('accChart')}</h2>${lineChart(accs, { smooth: movingAvg(accs), hline: mean(accs) })}</div>
