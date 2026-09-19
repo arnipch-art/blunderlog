@@ -2,7 +2,7 @@
 const STRINGS = {
   sv: {
     tagline: 'Stockfish går igenom dina chess.com-partier och visar vilka misstag du gör om och om igen – och vad du ska göra åt dem. Allt körs i din webbläsare, inget skickas någonstans.',
-    user: 'chess.com-användarnamn', games: 'Partier', last: '{n} senaste', all: 'alla',
+    user: 'chess.com-användarnamn', games: 'Partier', last: '{n} senaste', all: 'alla', latestOnly: 'bara senaste partiet',
     accuracyLevel: 'Noggrannhet', fast: 'snabb (djup 10)', normal: 'normal (djup 14)', deep: 'noggrann (djup 18)',
     timeClass: 'Tidsklass', analyse: 'Analysera', stop: 'Stoppa', clear: 'Rensa sparat',
     autoCheck: 'Kolla efter nya partier automatiskt när sidan öppnas',
@@ -32,7 +32,7 @@ const STRINGS = {
   },
   en: {
     tagline: 'Stockfish goes through your chess.com games and shows which mistakes you keep making – and what to do about them. Everything runs in your browser; nothing is sent anywhere.',
-    user: 'chess.com username', games: 'Games', last: 'last {n}', all: 'all',
+    user: 'chess.com username', games: 'Games', last: 'last {n}', all: 'all', latestOnly: 'latest game only',
     accuracyLevel: 'Precision', fast: 'fast (depth 10)', normal: 'normal (depth 14)', deep: 'thorough (depth 18)',
     timeClass: 'Time class', analyse: 'Analyse', stop: 'Stop', clear: 'Clear saved',
     autoCheck: 'Check for new games automatically when the page opens',
