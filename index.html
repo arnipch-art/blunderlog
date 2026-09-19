@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blunderlog</title>
 <meta name="description" content="Enter your chess.com username and get a Stockfish review of your games: accuracy, openings, estimated rating and the mistakes you keep repeating – all in your browser.">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -39,7 +38,7 @@
       <label class="auto"><input id="auto" type="checkbox" checked> <span data-i18n="autoCheck"></span></label>
     </form>
     <div id="progress" hidden aria-live="polite"><div class="ptext"><span id="progress-game"></span> <span id="progress-text"></span></div><div class="ptrack"><div id="progress-bar"></div></div></div>
-    <div id="error" class="error" hidden></div>
+    <div id="error" class="error" role="alert" hidden></div>
   </header>
 
   <p id="empty" class="empty" data-i18n="empty"></p>

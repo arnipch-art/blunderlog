@@ -96,21 +96,25 @@ export async function analyseGame(history, engine, limit, onProgress, shouldStop
     const c = new Chess(fens[i]);
     if (c.isGameOver()) { infos.push(terminalInfo(c)); continue; }
     infos.push(await engine.analyse(fens[i], limit));
-    if (onProgress) onProgress(i + 1, fens.length);
+    if (onProgress) onProgress(Math.min(i + 1, fens.length - 1), fens.length - 1);
   }
   return { infos, fens };
 }
 
 // Etikettlogiken samlad så att sparade partier kan få nya etiketter utan motor.
 // Höj LABEL_VERSION när reglerna ändras.
-export const LABEL_VERSION = 2;
+export const LABEL_VERSION = 3;
 
-export function classify({ inBook, isBest, loss, wpB, wpA, secondWp, sac, obvious }) {
+export function classify({ inBook, isBest, loss, wpB, wpA, secondWp, sac, obvious, inCheck }) {
   if (inBook) return 'Book';
-  // Brilliant som chess.com: ett offer (pjäsen kan slås med materialvinst), draget är bästa
-  // eller nästan bästa, ställningen håller efteråt, och ingen matt redan på brädet.
-  if (sac && loss < 5 && wpA >= 45 && wpB < 98) return 'Brilliant';
-  if (isBest && !obvious && secondWp !== null && wpA - secondWp >= 10 && wpA >= 45) return 'Great';
+  // "Tvång": näst bästa draget tappade ≥20 win% – då är offret en desperado, inte ett val
+  const forced = secondWp !== null && wpB - secondWp >= 20;
+  // Brilliant som chess.com: ett offer (pjäsen kan slås med materialvinst) som är bästa eller
+  // nästan bästa draget, ställningen håller efteråt, ingen matt redan på brädet, och inte tvång.
+  if (sac && loss < 5 && wpA >= 45 && wpB < 98 && !forced) return 'Brilliant';
+  // Great: enda bra draget. Jämför inom samma sökning (wpB mot näst bästa), aldrig i schack
+  // (kungsdrag är tvång) och aldrig ett slag som är jämnt eller vinnande (självklart).
+  if (isBest && !obvious && !inCheck && secondWp !== null && wpB - secondWp >= 10 && wpA >= 45) return 'Great';
   if (isBest) return 'Best';
   return labelForLoss(loss);
 }
@@ -129,7 +133,7 @@ export function relabel(rec, bookData) {
     m.label = classify({
       inBook, isBest, loss: m.loss, wpB: m.wpBefore, wpA: m.wpAfter,
       secondWp: m.secondCp === null || m.secondCp === undefined ? null : winPct(sign * m.secondCp),
-      sac: m.sacrifice, obvious: mv.flags.includes('c') && exchange > 0,
+      sac: m.sacrifice, obvious: mv.flags.includes('c') && exchange >= 0, inCheck: new Chess(m.fen).inCheck(),
     });
   }
   rec.labelVersion = LABEL_VERSION;
@@ -159,10 +163,11 @@ export function reviewMoves(history, fens, infos, bookData) {
     inBook = inBook && bookData.positions.has(posKey(fens[i + 1]));
     const exchange = see(fens[i], mv);
     const sac = mv.piece !== 'p' && mv.piece !== 'k' && exchange <= -2;
-    const obvious = mv.flags.includes('c') && exchange > 0;
+    const obvious = mv.flags.includes('c') && exchange >= 0;
+    const inCheck = new Chess(fens[i]).inCheck();
 
     const label = classify({
-      inBook, isBest, loss, wpB, wpA, secondWp: before.secondCp === null ? null : winPct(sign * before.secondCp), sac, obvious,
+      inBook, isBest, loss, wpB, wpA, secondWp: before.secondCp === null ? null : winPct(sign * before.secondCp), sac, obvious, inCheck,
     });
 
     out.push({
@@ -196,11 +201,12 @@ export function accuracyParts(reviews, infos, color) {
   const accs = reviews.filter((r) => r.color === color).map((r) => [r.accuracy, weights[r.ply - 1]]);
   if (!accs.length) return { weighted: 0, harmonic: 0 };
   const weighted = accs.reduce((s, [a, w]) => s + a * w, 0) / accs.reduce((s, [, w]) => s + w, 0);
-  const harmonic = accs.length / accs.reduce((s, [a]) => s + 1 / Math.max(a, 0.01), 0);
+  // golv 10 per drag: annars gör ett enda 0-drag hela harmoniska medlet till ~0
+  const harmonic = accs.length / accs.reduce((s, [a]) => s + 1 / Math.max(a, 10), 0);
   return { weighted, harmonic };
 }
 
-export const ACC_BLEND = 0.82; // kalibrerad mot chess.com:s egna siffror (39 partier)
+export const ACC_BLEND = 0.14; // kalibrerad mot chess.com:s egna siffror (38 partier, MAE 5.8 %) med golv 10 i harmoniska medlet
 export const blendAcc = (parts, blend = ACC_BLEND) => blend * parts.weighted + (1 - blend) * parts.harmonic;
 
 export function fmtEval(cp) {

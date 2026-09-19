@@ -3,7 +3,8 @@
 //  perf:  prestationsrating på resultaten = motståndarnas snittrating + 400·(V−F)/N.
 //         OBS: chess.com matchar mot spelare nära din egen rating, så perf ≈ din rating ± form.
 // Räknas bara på den tidsklass du spelat mest av bland de senaste partierna, kräver ≥10 partier.
-const ANCHORS = [[35, 200], [45, 350], [55, 500], [62, 650], [68, 800], [74, 1000], [79, 1250], [84, 1500], [88, 1800], [92, 2100], [96, 2400], [100, 2800]];
+// Ankarna är sänkta efter kontroll mot projektets eget data (rapid ~600 ≈ 71 % här). Fortfarande grovt.
+const ANCHORS = [[35, 150], [45, 250], [55, 350], [62, 450], [68, 550], [74, 750], [79, 1000], [84, 1300], [88, 1600], [92, 1950], [96, 2300], [100, 2700]];
 
 export function accToRating(acc) {
   if (acc <= ANCHORS[0][0]) return ANCHORS[0][1];

@@ -16,7 +16,7 @@ export class Engine {
 
   waitFor(pred, ms = 20000) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.listeners = this.listeners.filter((f) => f !== fn); reject(new Error('Stockfish svarade inte (blockerad wasm?)')); }, ms);
+      const timer = setTimeout(() => { this.listeners = this.listeners.filter((f) => f !== fn); reject(new Error('engineTimeout')); }, ms);
       const fn = (line) => {
         if (line.startsWith('error ')) { clearTimeout(timer); reject(new Error(line)); }
         if (pred(line)) { clearTimeout(timer); this.listeners = this.listeners.filter((f) => f !== fn); resolve(line); }
@@ -27,7 +27,7 @@ export class Engine {
 
   async init({ hashMb = 32 } = {}) {
     this.send('uci');
-    await this.waitFor((l) => l === 'uciok');
+    await this.waitFor((l) => l === 'uciok', 60000); // wasm-kompilering kan ta länge på mobil
     this.send(`setoption name Hash value ${hashMb}`);
     this.send('setoption name MultiPV value 2');
     this.send('isready');
@@ -36,10 +36,11 @@ export class Engine {
 
   // limit: {depth, movetime} – stoppar när endera nås
   analyse(fen, { depth = 12, movetime = 800 } = {}) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const whiteToMove = fen.split(' ')[1] === 'w';
       const lines = {}; // multipv -> {cp, pv, depth}
       const fn = (line) => {
+        if (line.startsWith('error ')) { this.listeners = this.listeners.filter((f) => f !== fn); reject(new Error('engineError')); return; }
         if (line.startsWith('info ') && line.includes(' pv ') && line.includes(' multipv ')) {
           const t = line.split(' ');
           const get = (k) => { const i = t.indexOf(k); return i >= 0 ? t[i + 1] : null; };

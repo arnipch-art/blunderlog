@@ -35,7 +35,7 @@ function metaFor(g, user) {
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 // newerThan: hoppa över partier äldre än så (auto-kollen ska bara ta nya partier)
-async function fetchCandidates(user, classes, limit, have, newerThan = 0) {
+async function fetchCandidates(user, classes, limit, have, newerThan = 0, latestOnly = false) {
   const { archives } = await api(`https://api.chess.com/pub/player/${encodeURIComponent(user)}/games/archives`);
   const out = [];
   for (const url of archives.slice().reverse()) {
@@ -44,7 +44,9 @@ async function fetchCandidates(user, classes, limit, have, newerThan = 0) {
       if (g.rules !== 'chess' || !g.pgn || (g.initial_setup && g.initial_setup !== START_FEN)) continue;
       if (g.end_time <= newerThan) return out;
       const id = g.url.split('/').pop();
-      if (!classes.has(g.time_class) || have.has(id)) continue;
+      if (!classes.has(g.time_class)) continue;
+      if (latestOnly) return have.has(id) ? [] : [{ id, pgn: g.pgn, meta: metaFor(g, user) }];
+      if (have.has(id)) continue;
       out.push({ id, pgn: g.pgn, meta: metaFor(g, user) });
       if (limit && out.length >= limit) return out;
     }
@@ -109,11 +111,14 @@ async function run({ onlyNew = false } = {}) {
     setProgress(t('fetching'), 0);
     const have = new Set(state.recs.map((r) => r.id));
     const newerThan = onlyNew && state.recs.length ? Math.max(...state.recs.map((r) => r.meta.endTime)) : 0;
-    const cands = await fetchCandidates(user, classes, onlyNew ? 0 : limit, have, newerThan);
+    const cands = await fetchCandidates(user, classes, onlyNew ? 30 : limit, have, newerThan, limit === 1 && !onlyNew);
     if (!cands.length) { setProgress(t('noNew'), 1); return; }
     setProgress(t('starting'), 0);
     const book = await loadBook();
-    if (!state.engine) { state.engine = new Engine(); await state.engine.init(); }
+    if (!state.engine) {
+      const eng = new Engine();
+      try { await eng.init(); state.engine = eng; } catch (err) { eng.terminate(); throw err; }
+    }
     for (let k = 0; k < cands.length; k++) {
       if (state.stop) break;
       $('#progress-game').textContent = t('gameOf', { k: k + 1, n: cands.length });
@@ -127,7 +132,9 @@ async function run({ onlyNew = false } = {}) {
     setProgress(state.stop ? t('stopped') : t('done'), 1);
     $('#progress-game').textContent = '';
   } catch (e) {
-    $('#error').textContent = e.message; $('#error').hidden = false;
+    const msg = e.message === 'engineTimeout' || e.message === 'engineError' ? t('engineFail')
+      : /fetch|load failed|network/i.test(e.message) ? t('netError') : e.message;
+    $('#error').textContent = msg; $('#error').hidden = false;
     $('#progress').hidden = true;
   } finally {
     state.running = false; $('#run').hidden = false; $('#stop').hidden = true;
@@ -237,5 +244,5 @@ if (initial) {
   loadReviews(initial).then(async (recs) => {
     state.recs = recs; await upgradeLabels(initial, recs); render();
     if (recs.length && $('#auto').checked) run({ onlyNew: true });
-  });
+  }).catch((err) => { $('#error').textContent = err.message; $('#error').hidden = false; });
 }

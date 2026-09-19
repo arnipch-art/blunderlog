@@ -1,8 +1,8 @@
 // SVG-bräde med pilar, senaste-drag-markering och etikettbricka.
 // played = röd pil, best = grön pil, lastMove = gula rutor, badge = {square, label}.
 import { COLORS } from './review.js';
-const SYM = { Brilliant: '!!', Great: '!', Best: '★', Excellent: '✓', Good: '✓', Book: '📖', Inaccuracy: '?!', Mistake: '?', Blunder: '??' };
-const DARK = new Set(['Blunder', 'Great', 'Book']);
+const SYM = { Brilliant: '!!', Great: '!', Best: '★', Excellent: '✓', Good: '•', Book: '≡', Inaccuracy: '?!', Mistake: '?', Blunder: '??' };
+const DARK = new Set(['Blunder']);
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 
 function sqXY(sq, flip) {
@@ -40,7 +40,7 @@ export function boardSvg(fen, { played, best, lastMove, badge, orientation = 'wh
       if (/\d/.test(ch)) { f += Number(ch); continue; }
       const white = ch === ch.toUpperCase();
       const x = (flip ? 7 - f : f) * 25 + 12.5, y = (flip ? 7 - r : r) * 25 + 13;
-      pieces += `<text x="${x}" y="${y}" font-size="21" text-anchor="middle" dominant-baseline="central" ` +
+      pieces += `<text x="${x}" y="${y}" font-size="21" text-anchor="middle" dominant-baseline="central" font-family="'Segoe UI Symbol','Apple Symbols','DejaVu Sans','Noto Sans Symbols2',sans-serif" ` +
         `fill="${white ? '#fff' : '#111'}" stroke="${white ? '#111' : 'none'}" stroke-width=".8" paint-order="stroke">${GLYPH[ch.toLowerCase()]}</text>`;
       f += 1;
     }

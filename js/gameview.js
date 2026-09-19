@@ -6,10 +6,10 @@ import { Chess } from '../vendor/chess.js';
 import { t } from './i18n.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const SYMBOL = { Brilliant: '!!', Great: '!', Best: '★', Excellent: '✓', Good: '✓', Book: '📖', Inaccuracy: '?!', Mistake: '?', Blunder: '??' };
-const DARK = new Set(['Blunder', 'Great', 'Book']);
+export const SYMBOL = { Brilliant: '!!', Great: '!', Best: '★', Excellent: '✓', Good: '•', Book: '≡', Inaccuracy: '?!', Mistake: '?', Blunder: '??' };
+const DARK = new Set(['Blunder']);
 
-export const badge = (label, cls = '') => `<span class="badge ${cls}" style="background:${COLORS[label]};color:${DARK.has(label) ? '#fff' : '#111'}" title="${label}">${SYMBOL[label]}</span>`;
+export const badge = (label, cls = '') => `<span class="badge ${cls}" style="background:${COLORS[label]};color:${DARK.has(label) ? '#fff' : '#111'}" title="${label}" role="img" aria-label="${label}">${SYMBOL[label]}</span>`;
 
 let cleanup = null;
 
@@ -96,11 +96,12 @@ export function mountGame(panel, rec, blend, startPly = null) {
     bar.querySelector('.evalbar-w').style.height = `${wp}%`;
     bar.querySelector('.evalbar-txt').textContent = fmtEval(cp);
     bar.classList.toggle('black-lead', wp < 50);
+    bar.classList.toggle('flip', orientation === 'black');
     cursor.setAttribute('x1', xs[ply].toFixed(1)); cursor.setAttribute('x2', xs[ply].toFixed(1));
     posEl.textContent = m ? `${Math.floor((m.ply + 1) / 2)}${m.color === 'white' ? '.' : '...'} ${m.san}` : t('startPos');
     if (m) {
       const who = m.mine ? t('you') : esc(m.color === 'white' ? h.White : h.Black);
-      let text = `<div class="gv-c1">${badge(m.label)} <b>${esc(m.san)}</b> ${t('isLabel', { label: m.label })}</div>`;
+      let text = `<div class="gv-c1">${badge(m.label)} <b>${esc(m.san)}</b> <span class="muted">·</span> ${m.label}</div>`;
       if (!['Best', 'Book', 'Brilliant', 'Great'].includes(m.label) && m.best) text += `<div>${t('wasBest', { best: esc(m.bestSan) })} <span class="muted">(${who}: ${m.wpBefore.toFixed(0)} % → ${m.wpAfter.toFixed(0)} %)</span></div>`;
       if (m.label === 'Brilliant') text += `<div class="muted">${t('brilliantWhy')}</div>`;
       if (m.label === 'Great') text += `<div class="muted">${t('greatWhy')}</div>`;
@@ -125,7 +126,7 @@ export function mountGame(panel, rec, blend, startPly = null) {
     show(best);
   };
   const onKey = (e) => {
-    if (panel.hidden || e.target.matches('input, select, textarea')) return;
+    if (panel.hidden || e.target.matches('input, select, textarea') || e.target.closest('.ptab, .mtab')) return;
     if (e.key === 'ArrowLeft') { show(ply - 1); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { show(ply + 1); e.preventDefault(); }
     else if (e.key === 'Home') { show(0); e.preventDefault(); }

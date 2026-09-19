@@ -1,6 +1,6 @@
 // Renderar dashboarden ur en lista analyserade partier. Port av stats.py build().
 import { COLORS, LABEL_ORDER, winPct, fmtEval, blendAcc } from './review.js';
-import { patternInfo, PHASES, phaseOf, detectPatterns, incrementOf } from './patterns.js';
+import { patternInfo, PHASES, phaseOf, detectPatterns } from './patterns.js';
 import { t } from './i18n.js';
 import { boardSvg } from './board.js';
 import { estimateElo } from './elo.js';
@@ -8,7 +8,7 @@ import { badge } from './gameview.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-const fmtDate = (t) => new Date(t * 1000).toISOString().slice(0, 10);
+const fmtDate = (ts) => { const d = new Date(ts * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const PIECE_KEY = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn', k: 'king' };
 
 function lineChart(vals, { y0 = 0, y1 = 100, color = '#5dbb63', smooth = null, hline = null } = {}) {
@@ -26,14 +26,15 @@ function lineChart(vals, { y0 = 0, y1 = 100, color = '#5dbb63', smooth = null, h
 
 const movingAvg = (vals, k = 5) => vals.map((_, i) => mean(vals.slice(Math.max(0, i - k + 1), i + 1)));
 const bar = (pct, color) => `<div class="bar"><div style="width:${Math.max(0, Math.min(100, pct)).toFixed(0)}%;background:${color}"></div></div>`;
-const DARK_TAGS = new Set(['Blunder', 'Great', 'Book']);
+const DARK_TAGS = new Set(['Blunder']);
 const tag = (label) => `<span class="tag"${DARK_TAGS.has(label) ? ' data-dark' : ''} style="background:${COLORS[label]}">${label}</span>`;
 
 export function myAcc(rec, blend) { return blendAcc(rec.accuracy[rec.meta.color], blend); }
 
 export function calibrate(recs) {
+  // kalibrera först vid ≥20 par – med färre hoppar blend (och alla siffror) för varje nytt par
   const pairs = recs.filter((r) => r.meta.ccAccuracy).map((r) => [r, r.meta.ccAccuracy]);
-  if (pairs.length < 5) return null;
+  if (pairs.length < 20) return null;
   let best = null;
   for (let k = 0; k <= 100; k++) {
     const b = k / 100;
@@ -43,7 +44,9 @@ export function calibrate(recs) {
   return best;
 }
 
-export function renderDashboard(recs, user, blend, calib) {
+export function renderDashboard(allRecs, user, blend, calib) {
+  // statistik bara på partier med minst 5 egna drag; partitabellen visar alla
+  const recs = allRecs.filter((r) => r.moves.filter((m) => m.mine).length >= 5);
   const n = recs.length;
   if (!n) return '';
   const accs = recs.map((r) => myAcc(r, blend));
@@ -75,17 +78,6 @@ export function renderDashboard(recs, user, blend, calib) {
   const lossHow = {};
   for (const r of recs) if (r.meta.outcome === 'loss') lossHow[r.meta.result] = (lossHow[r.meta.result] || 0) + 1;
 
-  const spentBad = [], spentOk = [];
-  for (const r of recs) {
-    const inc = incrementOf(r.meta.timeControl);
-    let prev = null;
-    for (const m of r.moves) {
-      if (!m.mine || m.clock == null) continue;
-      if (prev != null) (m.label === 'Mistake' || m.label === 'Blunder' ? spentBad : spentOk).push(Math.max(0, prev + inc - m.clock));
-      prev = m.clock;
-    }
-  }
-
   const elo = estimateElo(recs, accs);
 
   // rankning på andel drabbade partier (ett långt slutspel ska inte kunna dominera), träffar som sekundärnyckel
@@ -100,7 +92,7 @@ export function renderDashboard(recs, user, blend, calib) {
     if (h.pattern === 'missed_mate') cost = `${t('mateIn', { n: 10000 - Math.abs(m.cpBefore) })} → ${fmtEval(sign * m.cpAfter)}`;
     if (h.pattern === 'opening_trouble') cost = `${t('wp10')}: ${m.wpAfter.toFixed(0)} %`;
     const extra = (h.spent != null ? ` · ${t('thought', { s: h.spent.toFixed(0) })}` : '') + (h.clock != null ? ` · ${t('left', { s: h.clock.toFixed(0) })}` : '');
-    return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>${h.pattern === 'opening_trouble' ? esc(h.game.opening) : `${t('best')}: <b>${esc(h.bestSan)}</b>`} · ${cost}${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">vs ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" data-ply="${h.ply}" class="show-game">${t('report')}</a></div></div>`;
+    return `<div class="ex">${boardSvg(h.fen, { played: h.uci, best: h.best, orientation: g.color, size: 150 })}<div><b>${mv}</b> ${tag(h.label)}<br>${h.pattern === 'opening_trouble' ? esc(h.game.opening) : `${t('best')}: <b>${esc(h.bestSan)}</b>`} · ${cost}${extra}<br><a href="${esc(g.url)}?move=${h.ply}" target="_blank" rel="noopener">${t('vs')} ${esc(g.opponent)} (${g.timeClass}, ${fmtDate(g.endTime)})</a> · <a href="#" data-game="${h.game.id}" data-ply="${h.ply}" class="show-game">${t('report')}</a></div></div>`;
   };
 
   let patternHtml = '', tabsHtml = '';
@@ -133,7 +125,7 @@ export function renderDashboard(recs, user, blend, calib) {
     return `<tr><td>${t(color)}</td><td>${esc(name)}</td><td>${lst.length}</td><td>${(100 * wins / lst.length).toFixed(0)} %</td><td>${mean(lst.map(([a]) => a)).toFixed(0)} %</td><td>${wp10s.length ? mean(wp10s).toFixed(0) + ' %' : '–'}</td></tr>`;
   }).join('');
 
-  const gameRows = [...recs].reverse().map((r) => {
+  const gameRows = [...allRecs].reverse().map((r) => {
     const g = r.meta, a = myAcc(r, blend);
     const bl = r.moves.filter((m) => m.mine && m.label === 'Blunder').length;
     const mi = r.moves.filter((m) => m.mine && m.label === 'Mistake').length;
@@ -150,9 +142,6 @@ export function renderDashboard(recs, user, blend, calib) {
   const labelsHtml = LABEL_ORDER.filter((k) => labelCounts[k]).map((k) => `<div class="cnt">${badge(k)}${k}<span class="muted">${(100 * labelCounts[k] / myMoves).toFixed(1)} %</span><b>${labelCounts[k]}</b></div>`).join('');
   const phaseHtml = PHASES.map((ph) => { const b = phaseBad[ph] || 0, tot = phaseMoves[ph] || 0; return `<div class="cnt">${t(ph)}<span class="muted">${b} ${t('of')} ${tot} ${t('moves')}</span><b>${(100 * b / Math.max(1, tot)).toFixed(1)} %</b></div>${bar(100 * b / Math.max(1, tot) * 5, '#e67e22')}`; }).join('');
   const howLost = Object.entries(lossHow).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${t(k)} ${v}`).join(', ');
-  const timeHtml = spentBad.length && spentOk.length
-    ? `<div class="cnt">${t('avgPerMove')}<b>${mean(spentOk).toFixed(1)} s</b></div><div class="cnt">${t('avgOnBad')}<b>${mean(spentBad).toFixed(1)} s</b></div><div class="cnt">${t('badFast')}<b>${spentBad.filter((s) => s <= 3).length} ${t('of')} ${spentBad.length}</b></div>`
-    : `<div class="muted">${t('noClocks')}</div>`;
   const classes = [...new Set(recs.map((r) => r.meta.timeClass))].sort().join(', ');
   const calibNote = calib ? ` · ${t('calibNote', { n: calib.n, err: calib.err.toFixed(1) })}` : '';
 

@@ -66,7 +66,8 @@ export function detectPatterns(rec) {
     const bad = m.label === 'Mistake' || m.label === 'Blunder';
     const sign = m.color === 'white' ? 1 : -1;
 
-    if (m.cpBefore * sign >= 9000 && m.cpAfter * sign < 9000 && m.uci !== m.best) hits.push({ ...base, pattern: 'missed_mate' });
+    // missad matt räknas bara om den kostade något (fortfarande +15 är inget att coacha på)
+    if (m.cpBefore * sign >= 9000 && m.cpAfter * sign < 9000 && m.uci !== m.best && (m.loss >= 10 || m.wpAfter < 90)) hits.push({ ...base, pattern: 'missed_mate' });
 
     if (m.loss >= 5 && m.best && m.uci !== m.best) {
       const c = new Chess(m.fen);
@@ -91,7 +92,9 @@ export function detectPatterns(rec) {
     }
 
     // straffade inte: bara när det inte samtidigt var en egen hängning/gaffel (då är det den diagnosen som gäller)
-    if (bad && !ownTactic && i > 0 && (moves[i - 1].label === 'Mistake' || moves[i - 1].label === 'Blunder') && m.loss >= 10) {
+    // ...och bara om vinsten motståndaren gav faktiskt gavs tillbaka (prev.wpBefore är ur motståndarens perspektiv)
+    if (bad && !ownTactic && i > 0 && (moves[i - 1].label === 'Mistake' || moves[i - 1].label === 'Blunder') && m.loss >= 10
+        && m.wpAfter <= 100 - moves[i - 1].wpBefore + 5) {
       hits.push({ ...base, pattern: 'missed_punish' });
     }
     if (m.wpBefore >= 80 && m.wpAfter <= 55) hits.push({ ...base, pattern: 'threw_won' });
